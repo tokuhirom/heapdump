@@ -115,8 +115,9 @@ func parseIt() error {
 		case *hprofdata.HProfRootThreadObj:
 			//key = cs.countThreadObj
 			//cs.countThreadObj++
+		case *hprofdata.HProfRootMonitorUsed:
 		default:
-			log.Printf("unknown record type!: %#v", record)
+			log.Printf("unknown record type!!: %#v", record)
 		}
 	}
 
