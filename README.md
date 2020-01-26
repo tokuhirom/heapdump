@@ -7,3 +7,8 @@
 
 というようなデータ構造を作成する。
 
+TODO:
+
+* calculate size of fields
+* support object array
+* support primitive array

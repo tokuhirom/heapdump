@@ -17,12 +17,28 @@ type counters struct {
 	countStickyClass uint64
 	countThreadObj   uint64
 	countLoadClass   uint64
-	countClassDump   uint64 // Total Classes
 }
 
-func parseIt() error {
-	heapFilePath := "/tmp/heapdump.hprof"
+type HeapDumpAnalyzer struct {
+	nameId2string             map[uint64]string
+	classObjectId2classNameId map[uint64]uint64
+	classObjectId2objectIds   map[uint64][]uint64
+	classObjectId2classDump   map[uint64]*hprofdata.HProfClassDump
+	arrayObjectId2bytes       map[uint64]int
+	countClassDump            uint64 // Total Classes
+}
 
+func NewHeapDumpAnalyzer() *HeapDumpAnalyzer {
+	m := new(HeapDumpAnalyzer)
+	m.nameId2string = make(map[uint64]string)
+	m.classObjectId2classNameId = make(map[uint64]uint64)
+	m.classObjectId2objectIds = make(map[uint64][]uint64)
+	m.classObjectId2classDump = make(map[uint64]*hprofdata.HProfClassDump)
+	m.arrayObjectId2bytes = make(map[uint64]int)
+	return m
+}
+
+func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 	f, err := os.Open(heapFilePath)
 	if err != nil {
 		return err
@@ -32,12 +48,8 @@ func parseIt() error {
 	p := parser.NewParser(f)
 	_, err = p.ParseHeader()
 	if err != nil {
-		return err
+		return nil
 	}
-
-	nameId2string := make(map[uint64]string)
-	classObjectId2classNameId := make(map[uint64]uint64)
-	classObjectId2objectIds := make(map[uint64][]uint64)
 
 	cs := &counters{}
 	var prev int64
@@ -60,7 +72,7 @@ func parseIt() error {
 		case *hprofdata.HProfRecordUTF8:
 			//log.Printf("%v", o.GetNameId())
 			//log.Printf("%v", o.XXX_Size())
-			nameId2string[o.GetNameId()] = string(o.GetName())
+			a.nameId2string[o.GetNameId()] = string(o.GetName())
 			//key = o.GetNameId()
 		case *hprofdata.HProfRecordLoadClass:
 			/*
@@ -70,9 +82,9 @@ func parseIt() error {
 			 *                id        class name ID
 			 */
 			//key = uint64(o.GetClassSerialNumber())
-			classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
+			a.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
 			log.Printf("%v=%v", o.GetClassObjectId(),
-				nameId2string[o.GetClassNameId()])
+				a.nameId2string[o.GetClassNameId()])
 			cs.countLoadClass += 1
 		case *hprofdata.HProfRecordFrame:
 			// stack frame.
@@ -88,18 +100,20 @@ func parseIt() error {
 			//classNameId := classObjectId2classNameId[o.GetClassObjectId()]
 			//className := nameId2string[classNameId]
 			//log.Printf("className=%s", className)
-			cs.countClassDump += 1
+			a.classObjectId2classDump[o.ClassObjectId] = o
+			a.countClassDump += 1
 		case *hprofdata.HProfInstanceDump:
 			//key = o.GetObjectId()
-			classNameId := classObjectId2classNameId[o.GetClassObjectId()]
-			className := nameId2string[classNameId]
+			classNameId := a.classObjectId2classNameId[o.GetClassObjectId()]
+			className := a.nameId2string[classNameId]
 			log.Printf("INSTANCE! className=%s", className)
-			o.GetValues()
-			classObjectId2objectIds[o.ClassObjectId] = append(classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
+			a.classObjectId2objectIds[o.ClassObjectId] = append(a.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
 		case *hprofdata.HProfObjectArrayDump:
 			//key = o.GetArrayObjectId()
 		case *hprofdata.HProfPrimitiveArrayDump:
 			//key = o.GetArrayObjectId()
+			arrayObjectId := o.GetArrayObjectId()
+			a.arrayObjectId2bytes[arrayObjectId] = len(o.GetValues())
 		case *hprofdata.HProfRootJNIGlobal:
 			//key = cs.countJNIGlobal
 			//cs.countJNIGlobal++
@@ -120,23 +134,40 @@ func parseIt() error {
 			log.Printf("unknown record type!!: %#v", record)
 		}
 	}
+	return nil
+}
 
+func (a HeapDumpAnalyzer) Dump() {
 	var classObjectIds []uint64
-	for k, _ := range classObjectId2objectIds {
+	for k, _ := range a.classObjectId2objectIds {
 		classObjectIds = append(classObjectIds, k)
 	}
 	sort.Slice(classObjectIds, func(i, j int) bool {
-		return len(classObjectId2objectIds[classObjectIds[i]]) < len(classObjectId2objectIds[classObjectIds[j]])
+		return len(a.classObjectId2objectIds[classObjectIds[i]]) < len(a.classObjectId2objectIds[classObjectIds[j]])
 	})
 	for _, classObjectId := range classObjectIds {
-		classNameId := classObjectId2classNameId[classObjectId]
-		name := nameId2string[classNameId]
+		classNameId := a.classObjectId2classNameId[classObjectId]
+		name := a.nameId2string[classNameId]
 		fmt.Printf("%d\t= %s\n",
-			len(classObjectId2objectIds[classObjectId]),
+			len(a.classObjectId2objectIds[classObjectId]),
 			name)
 	}
 
-	log.Printf("Total Classes=%v", cs.countClassDump)
+	log.Printf("Total Classes=%v", a.countClassDump)
+}
+
+func parseIt() error {
+	heapFilePath := "/tmp/heapdump.hprof"
+
+	// calculate the size of each instance objects.
+	// 途中で sleep とか適宜入れる？
+	analyzer := NewHeapDumpAnalyzer()
+	err := analyzer.Scan(heapFilePath)
+	if err != nil {
+		return err
+	}
+
+	analyzer.Dump()
 
 	return nil
 }
