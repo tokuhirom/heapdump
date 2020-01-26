@@ -26,6 +26,7 @@ type HeapDumpAnalyzer struct {
 	classObjectId2classDump   map[uint64]*hprofdata.HProfClassDump
 	arrayObjectId2bytes       map[uint64]int
 	countClassDump            uint64 // Total Classes
+	objectId2instanceDump     map[uint64]*hprofdata.HProfInstanceDump
 }
 
 func NewHeapDumpAnalyzer() *HeapDumpAnalyzer {
@@ -35,6 +36,7 @@ func NewHeapDumpAnalyzer() *HeapDumpAnalyzer {
 	m.classObjectId2objectIds = make(map[uint64][]uint64)
 	m.classObjectId2classDump = make(map[uint64]*hprofdata.HProfClassDump)
 	m.arrayObjectId2bytes = make(map[uint64]int)
+	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
 	return m
 }
 
@@ -102,12 +104,13 @@ func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 			//log.Printf("className=%s", className)
 			a.classObjectId2classDump[o.ClassObjectId] = o
 			a.countClassDump += 1
-		case *hprofdata.HProfInstanceDump:
+		case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
 			//key = o.GetObjectId()
 			classNameId := a.classObjectId2classNameId[o.GetClassObjectId()]
 			className := a.nameId2string[classNameId]
 			log.Printf("INSTANCE! className=%s", className)
 			a.classObjectId2objectIds[o.ClassObjectId] = append(a.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
+			a.objectId2instanceDump[o.ObjectId] = o
 		case *hprofdata.HProfObjectArrayDump:
 			//key = o.GetArrayObjectId()
 		case *hprofdata.HProfPrimitiveArrayDump:
@@ -156,6 +159,55 @@ func (a HeapDumpAnalyzer) Dump() {
 	log.Printf("Total Classes=%v", a.countClassDump)
 }
 
+func (a HeapDumpAnalyzer) sizeInstance(objectId uint64) {
+	instanceDump := a.objectId2instanceDump[objectId]
+	classDump := a.classObjectId2classDump[instanceDump.ClassObjectId]
+	log.Printf("%v", classDump)
+
+	// instance field を舐めてサイズを計算する。super があればそこも全てみる。
+	size := 0
+	for _, field := range classDump.InstanceFields {
+		switch field.Type {
+		case hprofdata.HProfValueType_OBJECT:
+			log.Printf("TODO: object scan is not available yet.")
+		// Boolean. Takes 0 or 1. One byte.
+		case hprofdata.HProfValueType_BOOLEAN:
+			size += 1
+			// Character. Two bytes.
+		case hprofdata.HProfValueType_CHAR:
+			size += 2
+			// Float. 4 bytes
+		case hprofdata.HProfValueType_FLOAT:
+			size += 4
+			// Double. 8 bytes.
+		case hprofdata.HProfValueType_DOUBLE:
+			size += 8
+			// Byte. One byte.
+		case hprofdata.HProfValueType_BYTE:
+			size += 1
+			// Short. Two bytes.
+		case hprofdata.HProfValueType_SHORT:
+			size += 2
+			// Integer. 4 bytes.
+		case hprofdata.HProfValueType_INT:
+			size += 4
+			// Long. 8 bytes.
+		case hprofdata.HProfValueType_LONG:
+			size += 8
+		default:
+			log.Fatalf("Unknown value type: %x", field.Type)
+		}
+	}
+}
+
+func (a HeapDumpAnalyzer) CalculateSizeOfInstances() {
+	for _, objectIds := range a.classObjectId2objectIds {
+		for _, objectId := range objectIds {
+			a.sizeInstance(objectId)
+		}
+	}
+}
+
 func parseIt() error {
 	heapFilePath := "/tmp/heapdump.hprof"
 
@@ -166,6 +218,9 @@ func parseIt() error {
 	if err != nil {
 		return err
 	}
+
+	log.Printf("---- CalculateSizeOfInstances phase ----")
+	analyzer.CalculateSizeOfInstances()
 
 	analyzer.Dump()
 
