@@ -211,7 +211,7 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen) uint
 		panic("Missing seen")
 	}
 	if seen.HasKey(objectId) { // recursive counting.
-		log.Printf("[INFO] Recursive counting occurred: %v", objectId)
+		log.Printf("[DEBUG] Recursive counting occurred: %v", objectId)
 		return 0
 	}
 
@@ -497,7 +497,8 @@ func (a HeapDumpAnalyzer) calcPrimitiveArraySize(dump *hprofdata.HProfPrimitiveA
 func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Seen) uint64 {
 	log.Printf("[DEBUG]      class: %v",
 		dump.ClassObjectId)
-	return a.scanStaticFields(dump.GetStaticFields(), seen)
+	//return a.scanStaticFields(dump.GetStaticFields(), seen)
+	return 0
 }
 
 func parseIt() error {
@@ -528,7 +529,7 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	filter := &logutils.LevelFilter{
 		Levels:   []logutils.LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
-		MinLevel: logutils.LogLevel("INFO"),
+		MinLevel: logutils.LogLevel("DEBUG"),
 		Writer:   os.Stderr,
 	}
 	log.SetOutput(filter)

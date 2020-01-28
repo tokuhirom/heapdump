@@ -112,3 +112,8 @@ func TestMisc(t *testing.T) {
 	tester := NewTester("testdata/array/heapdump.hprof", t)
 	tester.AssertTotalSizeLessThan("java/util/Vector", 1000)
 }
+
+func TestClass(t *testing.T) {
+	tester := NewTester("testdata/class/heapdump.hprof", t)
+	tester.AssertSize("Object1", 24)
+}
