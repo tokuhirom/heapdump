@@ -133,3 +133,8 @@ func TestHashMap(t *testing.T) {
 	tester.AssertSize("Object1", 24)
 }
 
+func TestStringBuilder(t *testing.T) {
+	tester := NewTester("testdata/stringbuilder/heapdump.hprof", t)
+	tester.AssertSize("Object1", 93)
+}
+

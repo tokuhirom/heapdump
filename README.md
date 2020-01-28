@@ -20,3 +20,6 @@ TODO:
 * hashmap の容量の計算がうまくいってない
 * logger にインデントの概念を導入する
 
+* stringbuilder の計算あうようにする！！！！
+
+

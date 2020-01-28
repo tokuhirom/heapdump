@@ -375,11 +375,12 @@ func (a HeapDumpAnalyzer) scanInstance(
 			// TODO 32bit support(特にやる気なし)
 			objectIdBytes := values[idx : idx+8]
 			objectId := binary.BigEndian.Uint64(objectIdBytes)
+			a.logger.Trace("NAMEEEEE=%v type=%v objectId=%v",
+				a.nameId2string[nameId], field.Type, objectId)
 			if objectId == 0 {
 				// the field contains null
-				a.logger.Trace("object field: name=%v oid=%v",
-					a.nameId2string[nameId],
-					objectId)
+				a.logger.Trace("object field: name=%v oid=NULL",
+					a.nameId2string[nameId])
 			} else {
 				instanceDump := a.objectId2instanceDump[objectId]
 				if instanceDump != nil {
@@ -408,6 +409,15 @@ func (a HeapDumpAnalyzer) scanInstance(
 							objectId, n)
 						size += n
 					}
+				} else {
+					a.logger.Trace("start:: object field: name=%v oid=%v",
+						a.nameId2string[nameId],
+						objectId)
+					n := a.retainedSizeInstance(objectId, seen)
+					a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
+						a.nameId2string[nameId],
+						objectId, n)
+					size += n
 				}
 			}
 			idx += 8
@@ -614,7 +624,7 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 }
 
 func parseIt() error {
-	heapFilePath := "testdata/boxed/heapdump.hprof"
+	heapFilePath := "testdata/stringbuilder/heapdump.hprof"
 
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
@@ -624,7 +634,7 @@ func parseIt() error {
 		return err
 	}
 
-	analyzer.CalculateSizeOfInstancesByName("java/lang/Module")
+	analyzer.CalculateSizeOfInstancesByName("java/lang/StringBuilder")
 	//analyzer.CalculateSizeOfInstancesByName("jdk/internal/module/IllegalAccessLogger")
 	//analyzer.CalculateSizeOfInstancesByName("Object1")
 	//analyzer.CalculateSizeOfInstances()
@@ -640,7 +650,7 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	filter := &logutils.LevelFilter{
 		Levels:   []logutils.LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
-		MinLevel: logutils.LogLevel("DEBUG"),
+		MinLevel: logutils.LogLevel("TRACE"),
 		Writer:   os.Stderr,
 	}
 	log.SetOutput(filter)
