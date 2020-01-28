@@ -117,3 +117,13 @@ func TestClass(t *testing.T) {
 	tester := NewTester("testdata/class/heapdump.hprof", t)
 	tester.AssertSize("Object1", 24)
 }
+
+func TestString(t *testing.T) {
+	tester := NewTester("testdata/string/heapdump.hprof", t)
+	tester.AssertSize("Object1", 24)
+}
+
+func TestHashMap(t *testing.T) {
+	tester := NewTester("testdata/hashmap/heapdump.hprof", t)
+	tester.AssertSize("Object1", 24)
+}
