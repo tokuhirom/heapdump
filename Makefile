@@ -1,4 +1,4 @@
-all: testdata/empty/empty.hprof testdata/int/int.hprof testdata/recursion/heapdump.hprof testdata/object/heapdump.hprof testdata/array/heapdump.hprof testdata/class/heapdump.hprof testdata/string/heapdump.hprof testdata/hashmap/heapdump.hprof
+all: testdata/empty/empty.hprof testdata/int/int.hprof testdata/recursion/heapdump.hprof testdata/object/heapdump.hprof testdata/array/heapdump.hprof testdata/class/heapdump.hprof testdata/string/heapdump.hprof testdata/hashmap/heapdump.hprof testdata/boxed/heapdump.hprof
 
 testdata/empty/empty.hprof: testdata/empty/EmptyTestData.java
 	cd testdata/empty && javac EmptyTestData.java && java EmptyTestData empty.hprof
@@ -23,5 +23,8 @@ testdata/string/heapdump.hprof: testdata/string/TestData.java
 
 testdata/hashmap/heapdump.hprof: testdata/hashmap/TestData.java
 	cd testdata/hashmap && javac TestData.java && java TestData heapdump.hprof
+
+testdata/boxed/heapdump.hprof: testdata/boxed/TestData.java
+	cd testdata/boxed && javac TestData.java && java TestData heapdump.hprof
 
 .PHONY: all

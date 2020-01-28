@@ -94,9 +94,10 @@ type HeapDumpAnalyzer struct {
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
 	sizeCache                        map[uint64]uint64
 	logger                           *Logger
+	debug                            bool
 }
 
-func NewHeapDumpAnalyzer() *HeapDumpAnalyzer {
+func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
 	m := new(HeapDumpAnalyzer)
 	m.nameId2string = make(map[uint64]string)
 	m.classObjectId2classNameId = make(map[uint64]uint64)
@@ -107,6 +108,7 @@ func NewHeapDumpAnalyzer() *HeapDumpAnalyzer {
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
 	m.sizeCache = make(map[uint64]uint64)
 	m.logger = NewLogger()
+	m.debug = debug
 	return m
 }
 
@@ -225,7 +227,7 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking() {
 	for _, classObjectId := range classObjectIds {
 		classNameId := a.classObjectId2classNameId[classObjectId]
 		name := a.nameId2string[classNameId]
-		log.Printf("[INFO] %20d(count=%5d)= %s\n",
+		log.Printf("[INFO] %10d(count=%5d)= %s\n",
 			classObjectId2objectSize[classObjectId],
 			classObjectId2objectCount[classObjectId],
 			name)
@@ -344,6 +346,11 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 		}
 	}
 
+	a.logger.Debug("/calcObjectSize(name=%v) oid=%d size=%v seen=%v",
+		a.nameId2string[classNameId],
+		objectId,
+		size, seen)
+
 	a.sizeCache[objectId] = size
 	return size
 }
@@ -374,14 +381,34 @@ func (a HeapDumpAnalyzer) scanInstance(
 					a.nameId2string[nameId],
 					objectId)
 			} else {
-				a.logger.Trace("start:: object field: name=%v oid=%v",
-					a.nameId2string[nameId],
-					objectId)
-				n := a.retainedSizeInstance(objectId, seen)
-				a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
-					a.nameId2string[nameId],
-					objectId, n)
-				size += n
+				instanceDump := a.objectId2instanceDump[objectId]
+				if instanceDump != nil {
+					name := a.nameId2string[a.classObjectId2classNameId[instanceDump.ClassObjectId]]
+					switch name {
+					case "java/lang/Integer":
+					case "java/lang/Short":
+					case "java/lang/Long":
+					case "java/lang/Byte":
+					case "java/lang/Char":
+					case "java/lang/Double":
+					case "java/lang/Float":
+					case "java/lang/Boolean":
+						a.logger.Trace("special object field: name=%v oid=%v",
+							a.nameId2string[nameId],
+							objectId)
+						// primitive wrappers are embedded? maybe.
+						// nan boxing かな？
+					default:
+						a.logger.Trace("start:: object field: name=%v oid=%v",
+							a.nameId2string[nameId],
+							objectId)
+						n := a.retainedSizeInstance(objectId, seen)
+						a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
+							a.nameId2string[nameId],
+							objectId, n)
+						size += n
+					}
+				}
 			}
 			idx += 8
 		// Boolean. Takes 0 or 1. One byte.
@@ -507,6 +534,21 @@ func (a HeapDumpAnalyzer) CalculateSizeOfInstancesByName(targetName string) map[
 			break
 		}
 	}
+
+	if a.debug {
+		totalSize := uint64(0)
+		var sizeList []uint64
+		for _, size := range retval {
+			totalSize += size
+			sizeList = append(sizeList, size)
+		}
+		sort.Slice(sizeList, func(i, j int) bool {
+			return sizeList[i] > sizeList[j]
+		})
+		a.logger.Debug("--- scanning total report totalSize=%v len=%v %v\n\n",
+			totalSize, len(sizeList), sizeList)
+	}
+
 	return retval
 }
 
@@ -538,15 +580,20 @@ func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDu
 	// TODO 24 バイトのヘッダがついてるっぽい。length 用だけなら 8 バイトで良さそうだが、なぜか？
 	// 8 = 64bit
 	r := uint64(24 + 8*len(dump.GetElementObjectIds()))
+	var sizeResult []uint64
 	for _, objectId := range objectIds {
 		if objectId != 0 {
-			r += a.retainedSizeInstance(objectId, seen)
+			s := a.retainedSizeInstance(objectId, seen)
+			if a.debug {
+				sizeResult = append(sizeResult, s)
+			}
+			r += s
 		}
 	}
-	a.logger.Debug("object array: %v len=%v size=%v",
+	a.logger.Debug("object array: %v len=%v size=%v sizeResult=%v",
 		dump.ArrayObjectId,
 		len(dump.GetElementObjectIds()),
-		r)
+		r, sizeResult)
 	return r
 }
 
@@ -567,19 +614,19 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 }
 
 func parseIt() error {
-	heapFilePath := "testdata/hashmap/heapdump.hprof"
+	heapFilePath := "testdata/boxed/heapdump.hprof"
 
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
-	analyzer := NewHeapDumpAnalyzer()
+	analyzer := NewHeapDumpAnalyzer(true)
 	err := analyzer.Scan(heapFilePath)
 	if err != nil {
 		return err
 	}
 
-	//analyzer.CalculateSizeOfInstancesByName("java/security/BasicPermissionCollection")
+	analyzer.CalculateSizeOfInstancesByName("java/lang/Module")
 	//analyzer.CalculateSizeOfInstancesByName("jdk/internal/module/IllegalAccessLogger")
-	analyzer.CalculateSizeOfInstancesByName("Object1")
+	//analyzer.CalculateSizeOfInstancesByName("Object1")
 	//analyzer.CalculateSizeOfInstances()
 
 	//analyzer.DumpInclusiveRanking()
@@ -593,7 +640,7 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	filter := &logutils.LevelFilter{
 		Levels:   []logutils.LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
-		MinLevel: logutils.LogLevel("TRACE"),
+		MinLevel: logutils.LogLevel("DEBUG"),
 		Writer:   os.Stderr,
 	}
 	log.SetOutput(filter)

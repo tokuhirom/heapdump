@@ -12,7 +12,7 @@ type Tester struct {
 func NewTester(path string, t *testing.T) *Tester {
 	m:= new(Tester)
 	m.t = t
-	m.analyzer = NewHeapDumpAnalyzer()
+	m.analyzer = NewHeapDumpAnalyzer(false)
 	err := m.analyzer.Scan(path)
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +123,13 @@ func TestString(t *testing.T) {
 	tester.AssertSize("Object1", 24)
 }
 
+func TestBoxed(t *testing.T) {
+	tester := NewTester("testdata/boxed/heapdump.hprof", t)
+	tester.AssertSize("Object1", 24)
+}
+
 func TestHashMap(t *testing.T) {
 	tester := NewTester("testdata/hashmap/heapdump.hprof", t)
 	tester.AssertSize("Object1", 24)
 }
+

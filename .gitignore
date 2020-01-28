@@ -4,3 +4,5 @@
 *.zip
 *.threads
 *.index
+/log
+/log.txt
