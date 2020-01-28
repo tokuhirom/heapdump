@@ -1,1 +1,3 @@
 /heapdump
+*.class
+*.hwcache

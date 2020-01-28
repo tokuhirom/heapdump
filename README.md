@@ -9,6 +9,7 @@
 
 TODO:
 
-* calculate size of fields
-* support object array
-* support primitive array
+* いろんな種類のオブジェクトで、ちゃんとした値が算出されるようにする
+* テストケースをかく
+* テスト用の heapdump を自動生成できるようにする
+ * make?

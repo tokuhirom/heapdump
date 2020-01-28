@@ -107,8 +107,8 @@ func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 			 */
 			//key = uint64(o.GetClassSerialNumber())
 			a.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
-			log.Printf("%v=%v", o.GetClassObjectId(),
-				a.nameId2string[o.GetClassNameId()])
+			//log.Printf("%v=%v", o.GetClassObjectId(),
+			//	a.nameId2string[o.GetClassNameId()])
 		case *hprofdata.HProfRecordFrame:
 			// stack frame.
 			//key = o.GetStackFrameId()
@@ -266,12 +266,15 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 
 	// instance field を舐めてサイズを計算する。super があればそこも全てみる。
 
-	size := uint64(len(instanceDump.GetValues()))
+	// 全てのインスタンスは 16 byte かかるっぽい。
+
+	size := uint64(16 + len(instanceDump.GetValues()))
 	values := instanceDump.GetValues()
 	// 読み込んだバイト数, サイズ
 	for {
 		nIdx, nSize := a.scanInstance(classDump.InstanceFields, values, seen)
 		size += nSize
+		log.Printf("[TRACE] nSize=%v", nSize)
 		values = values[nIdx:]
 		if classDump.SuperClassObjectId == 0 {
 			break
@@ -295,13 +298,69 @@ func (a HeapDumpAnalyzer) scanInstance(
 	fields []*hprofdata.HProfClassDump_InstanceField,
 	values []byte,
 	seen *Seen) (int, uint64) {
-	var nameIds []uint64
-	var types []hprofdata.HProfValueType
+
+	size := uint64(0)
+	idx := 0
+
 	for _, field := range fields {
-		nameIds = append(nameIds, field.NameId)
-		types = append(types, field.Type)
+		nameId := field.NameId
+		switch field.Type {
+		case hprofdata.HProfValueType_OBJECT:
+			// TODO 32bit support(特にやる気なし)
+			objectIdBytes := values[idx : idx+8]
+			objectId := binary.BigEndian.Uint64(objectIdBytes)
+			log.Printf("[TRACE]  object field: name=%v oid=%v",
+				a.nameId2string[nameId],
+				objectId)
+			if objectId == 0 {
+				// the field contains null
+			} else {
+				size += a.sizeInstance(objectId, seen)
+			}
+			idx += 8
+		// Boolean. Takes 0 or 1. One byte.
+		case hprofdata.HProfValueType_BOOLEAN:
+			log.Printf("[TRACE]  Boolean Field: %v", a.nameId2string[nameId])
+			idx += 1
+		// Character. Two bytes.
+		case hprofdata.HProfValueType_CHAR:
+			log.Printf("[TRACE]  char Field: %v", a.nameId2string[nameId])
+			idx += 2
+		// Float. 4 bytes
+		case hprofdata.HProfValueType_FLOAT:
+			log.Printf("[TRACE]  float Field: %v", a.nameId2string[nameId])
+			idx += 4
+		// Double. 8 bytes.
+		case hprofdata.HProfValueType_DOUBLE:
+			log.Printf("[TRACE]  double Field: %v", a.nameId2string[nameId])
+			idx += 8
+		// Byte. One byte.
+		case hprofdata.HProfValueType_BYTE:
+			log.Printf("[TRACE]  byte Field: %v", a.nameId2string[nameId])
+			idx += 1
+		// Short. Two bytes.
+		case hprofdata.HProfValueType_SHORT:
+			log.Printf("[TRACE]  short Field: %v %v",
+				a.nameId2string[nameId],
+				int16(binary.BigEndian.Uint16(values[idx:idx+2])))
+			idx += 2
+		// Integer. 4 bytes.
+		case hprofdata.HProfValueType_INT:
+			log.Printf("[TRACE]  int Field: %v, %v",
+				a.nameId2string[nameId],
+				int32(binary.BigEndian.Uint32(values[idx:idx+4])))
+			idx += 4
+		// Long. 8 bytes.
+		case hprofdata.HProfValueType_LONG:
+			log.Printf("[TRACE]  long Field: %v",
+				a.nameId2string[nameId])
+			idx += 8
+		default:
+			log.Fatalf("Unknown value type: %x", field.Type)
+		}
 	}
-	return a.scanFields(nameIds, types, values, seen)
+
+	return idx, size
 }
 
 func (a HeapDumpAnalyzer) scanStaticFields(
@@ -366,89 +425,23 @@ func (a HeapDumpAnalyzer) scanStaticFields(
 	return size
 }
 
-func (a HeapDumpAnalyzer) scanFields(
-	nameIds []uint64,
-	types []hprofdata.HProfValueType,
-	values []byte,
-	seen *Seen) (int, uint64) {
-
-	size := uint64(0)
-	idx := 0
-
-	for i, nameId := range nameIds {
-		switch types[i] {
-		case hprofdata.HProfValueType_OBJECT:
-			// TODO 32bit support(特にやる気なし)
-			objectIdBytes := values[idx : idx+8]
-			objectId := binary.BigEndian.Uint64(objectIdBytes)
-			log.Printf("[TRACE]  object field: name=%v oid=%v",
-				a.nameId2string[nameId],
-				objectId)
-			if objectId == 0 {
-				// the field contains null
-			} else {
-				size += a.sizeInstance(objectId, seen)
-			}
-			idx += 8
-		// Boolean. Takes 0 or 1. One byte.
-		case hprofdata.HProfValueType_BOOLEAN:
-			log.Printf("[TRACE]  Boolean Field: %v", a.nameId2string[nameId])
-			idx += 1
-		// Character. Two bytes.
-		case hprofdata.HProfValueType_CHAR:
-			log.Printf("[TRACE]  char Field: %v", a.nameId2string[nameId])
-			idx += 2
-		// Float. 4 bytes
-		case hprofdata.HProfValueType_FLOAT:
-			log.Printf("[TRACE]  float Field: %v", a.nameId2string[nameId])
-			idx += 4
-		// Double. 8 bytes.
-		case hprofdata.HProfValueType_DOUBLE:
-			log.Printf("[TRACE]  double Field: %v", a.nameId2string[nameId])
-			idx += 8
-		// Byte. One byte.
-		case hprofdata.HProfValueType_BYTE:
-			log.Printf("[TRACE]  byte Field: %v", a.nameId2string[nameId])
-			idx += 1
-		// Short. Two bytes.
-		case hprofdata.HProfValueType_SHORT:
-			log.Printf("[TRACE]  short Field: %v %v",
-				a.nameId2string[nameId],
-				int16(binary.BigEndian.Uint16(values[idx:idx+2])))
-			idx += 2
-		// Integer. 4 bytes.
-		case hprofdata.HProfValueType_INT:
-			log.Printf("[TRACE]  int Field: %v, %v",
-				a.nameId2string[nameId],
-				int32(binary.BigEndian.Uint32(values[idx:idx+4])))
-			idx += 4
-		// Long. 8 bytes.
-		case hprofdata.HProfValueType_LONG:
-			log.Printf("[TRACE]  long Field: %v",
-				a.nameId2string[nameId])
-			idx += 8
-		default:
-			log.Fatalf("Unknown value type: %x", types[i])
-		}
-	}
-
-	return idx, size
-}
-
-func (a HeapDumpAnalyzer) CalculateSizeOfInstancesByName(targetName string) {
+func (a HeapDumpAnalyzer) CalculateSizeOfInstancesByName(targetName string) map[uint64]uint64 {
 	// Debugging
 	for classObjectId, objectIds := range a.classObjectId2objectIds {
 		name := a.nameId2string[a.classObjectId2classNameId[classObjectId]]
 		if name == targetName {
+			retval := make(map[uint64]uint64)
 			for _, objectId := range objectIds {
 				seen := NewSeen()
-				i := a.sizeInstance(objectId, seen)
-				log.Printf("[INFO] Scanned %v", i)
+				size := a.sizeInstance(objectId, seen)
+				retval[objectId] = size
+				log.Printf("[DEBUG] Scanned %v", size)
 			}
-			return
+			return retval
 		}
 	}
 	log.Fatalf("[ERROR] %s not found", targetName)
+	return nil
 }
 
 func (a HeapDumpAnalyzer) CalculateSizeOfInstances() {
