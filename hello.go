@@ -11,6 +11,51 @@ import (
 	"sort"
 )
 
+type Logger struct {
+	indent int
+}
+
+func NewLogger() *Logger {
+	m := new(Logger)
+	m.indent = 0
+	return m
+}
+
+func (a *Logger) Indent() {
+	a.indent = a.indent + 1
+}
+
+func (a *Logger) Dedent() {
+	a.indent = a.indent - 1
+}
+
+func (a *Logger) spaces() string {
+	r := ""
+	for i := 0; i < a.indent; i++ {
+		r += "  "
+	}
+	return r
+}
+
+func (a *Logger) Trace(msg string, v ...interface{}) {
+	log.Printf("[TRACE] "+a.spaces()+msg, v...)
+}
+
+func (a *Logger) Debug(msg string, v ...interface{}) {
+	log.Printf("[DEBUG] "+a.spaces()+msg, v...)
+}
+
+func (a *Logger) Info(msg string, v ...interface{}) {
+	log.Printf("[INFO] "+a.spaces()+msg, v...)
+}
+func (a *Logger) Warn(msg string, v ...interface{}) {
+	log.Printf("[WARN] "+a.spaces()+msg, v...)
+}
+
+func (a *Logger) Error(msg string, v ...interface{}) {
+	log.Printf("[ERROR] "+a.spaces()+msg, v...)
+}
+
 type Seen struct {
 	seen map[uint64]bool
 }
@@ -48,6 +93,7 @@ type HeapDumpAnalyzer struct {
 	countClassDump                   uint64 // Total Classes
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
 	sizeCache                        map[uint64]uint64
+	logger                           *Logger
 }
 
 func NewHeapDumpAnalyzer() *HeapDumpAnalyzer {
@@ -60,6 +106,7 @@ func NewHeapDumpAnalyzer() *HeapDumpAnalyzer {
 	m.arrayObjectId2objectArrayDump = make(map[uint64]*hprofdata.HProfObjectArrayDump)
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
 	m.sizeCache = make(map[uint64]uint64)
+	m.logger = NewLogger()
 	return m
 }
 
@@ -215,16 +262,19 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen) uint
 		panic("Missing seen")
 	}
 	if seen.HasKey(objectId) { // recursive counting.
-		log.Printf("[DEBUG] Recursive counting occurred: %v", objectId)
+		a.logger.Debug("Recursive counting occurred: %v", objectId)
 		return 0
 	}
 
-	log.Printf("[DEBUG] retainedSizeInstance() objectId=%d seen=%v",
+	a.logger.Debug("retainedSizeInstance() objectId=%d seen=%v",
 		objectId,
 		seen)
 
 	seen.Add(objectId)
 	defer seen.Remove(objectId)
+
+	a.logger.Indent()
+	defer a.logger.Dedent()
 
 	instanceDump := a.objectId2instanceDump[objectId]
 	if instanceDump != nil {
@@ -267,7 +317,7 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 	seen *Seen) uint64 {
 	classDump := a.classObjectId2classDump[instanceDump.ClassObjectId]
 	classNameId := a.classObjectId2classNameId[classDump.ClassObjectId]
-	log.Printf("[DEBUG] calcObjectSize(name=%v) oid=%d seen=%v",
+	a.logger.Debug("calcObjectSize(name=%v) oid=%d seen=%v",
 		a.nameId2string[classNameId],
 		objectId,
 		seen)
@@ -282,14 +332,14 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 	for {
 		nIdx, nSize := a.scanInstance(classDump.InstanceFields, values, seen)
 		size += nSize
-		log.Printf("[TRACE] nSize=%v (%v)", nSize,
+		a.logger.Trace("nSize=%v (%v)", nSize,
 			a.nameId2string[a.classObjectId2classNameId[classDump.ClassObjectId]])
 		values = values[nIdx:]
 		if classDump.SuperClassObjectId == 0 {
 			break
 		} else {
 			classDump = a.classObjectId2classDump[classDump.SuperClassObjectId]
-			log.Printf("[DEBUG]  checking super class %v",
+			a.logger.Trace("checking super class %v",
 				a.nameId2string[a.classObjectId2classNameId[classDump.ClassObjectId]])
 		}
 	}
@@ -320,15 +370,15 @@ func (a HeapDumpAnalyzer) scanInstance(
 			objectId := binary.BigEndian.Uint64(objectIdBytes)
 			if objectId == 0 {
 				// the field contains null
-				log.Printf("[TRACE]  object field: name=%v oid=%v",
+				a.logger.Trace("object field: name=%v oid=%v",
 					a.nameId2string[nameId],
 					objectId)
 			} else {
-				log.Printf("[TRACE]  start:: object field: name=%v oid=%v",
+				a.logger.Trace("start:: object field: name=%v oid=%v",
 					a.nameId2string[nameId],
 					objectId)
 				n := a.retainedSizeInstance(objectId, seen)
-				log.Printf("[TRACE]  finished:: object field: name=%v oid=%v, size=%v",
+				a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
 					a.nameId2string[nameId],
 					objectId, n)
 				size += n
@@ -336,39 +386,39 @@ func (a HeapDumpAnalyzer) scanInstance(
 			idx += 8
 		// Boolean. Takes 0 or 1. One byte.
 		case hprofdata.HProfValueType_BOOLEAN:
-			log.Printf("[TRACE]  boolean Field: %v", a.nameId2string[nameId])
+			a.logger.Trace("boolean Field: %v", a.nameId2string[nameId])
 			idx += 1
 		// Character. Two bytes.
 		case hprofdata.HProfValueType_CHAR:
-			log.Printf("[TRACE]  char Field: %v", a.nameId2string[nameId])
+			a.logger.Trace("char Field: %v", a.nameId2string[nameId])
 			idx += 2
 		// Float. 4 bytes
 		case hprofdata.HProfValueType_FLOAT:
-			log.Printf("[TRACE]  float Field: %v", a.nameId2string[nameId])
+			a.logger.Trace("float Field: %v", a.nameId2string[nameId])
 			idx += 4
 		// Double. 8 bytes.
 		case hprofdata.HProfValueType_DOUBLE:
-			log.Printf("[TRACE]  double Field: %v", a.nameId2string[nameId])
+			a.logger.Trace("double Field: %v", a.nameId2string[nameId])
 			idx += 8
 		// Byte. One byte.
 		case hprofdata.HProfValueType_BYTE:
-			log.Printf("[TRACE]  byte Field: %v", a.nameId2string[nameId])
+			a.logger.Trace("byte Field: %v", a.nameId2string[nameId])
 			idx += 1
 		// Short. Two bytes.
 		case hprofdata.HProfValueType_SHORT:
-			log.Printf("[TRACE]  short Field: %v %v",
+			a.logger.Trace("short Field: %v %v",
 				a.nameId2string[nameId],
 				int16(binary.BigEndian.Uint16(values[idx:idx+2])))
 			idx += 2
 		// Integer. 4 bytes.
 		case hprofdata.HProfValueType_INT:
-			log.Printf("[TRACE]  int Field: %v, %v",
+			a.logger.Trace("int Field: %v, %v",
 				a.nameId2string[nameId],
 				int32(binary.BigEndian.Uint32(values[idx:idx+4])))
 			idx += 4
 		// Long. 8 bytes.
 		case hprofdata.HProfValueType_LONG:
-			log.Printf("[TRACE]  long Field: %v",
+			a.logger.Trace("long Field: %v",
 				a.nameId2string[nameId])
 			idx += 8
 		default:
@@ -448,11 +498,11 @@ func (a HeapDumpAnalyzer) CalculateSizeOfInstancesByName(targetName string) map[
 		name := a.nameId2string[a.classObjectId2classNameId[classObjectId]]
 		if name == targetName {
 			for _, objectId := range objectIds {
-				log.Printf("[DEBUG] **** Scanning %v", targetName)
+				a.logger.Debug("**** Scanning %v", targetName)
 				seen := NewSeen()
 				size := a.retainedSizeInstance(objectId, seen)
 				retval[objectId] = size
-				log.Printf("[DEBUG] **** Scanned %v\n\n", size)
+				a.logger.Debug("**** Scanned %v\n\n", size)
 			}
 			break
 		}
@@ -482,18 +532,18 @@ func (a HeapDumpAnalyzer) CalculateSizeOfInstances() {
 }
 
 func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDump, seen *Seen) uint64 {
-	log.Printf("[INFO] --- calcObjectArraySize")
+	a.logger.Debug("--- calcObjectArraySize")
 
 	objectIds := dump.GetElementObjectIds()
 	// TODO 24 バイトのヘッダがついてるっぽい。length 用だけなら 8 バイトで良さそうだが、なぜか？
 	// 8 = 64bit
-	r := uint64(24 + 8 * len(dump.GetElementObjectIds()))
+	r := uint64(24 + 8*len(dump.GetElementObjectIds()))
 	for _, objectId := range objectIds {
 		if objectId != 0 {
 			r += a.retainedSizeInstance(objectId, seen)
 		}
 	}
-	log.Printf("[DEBUG]      object array: %v len=%v size=%v",
+	a.logger.Debug("object array: %v len=%v size=%v",
 		dump.ArrayObjectId,
 		len(dump.GetElementObjectIds()),
 		r)
@@ -503,7 +553,7 @@ func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDu
 func (a HeapDumpAnalyzer) calcPrimitiveArraySize(dump *hprofdata.HProfPrimitiveArrayDump) uint64 {
 	size := parser.ValueSize[dump.ElementType]
 	retval := uint64(4 + (len(dump.Values) * size))
-	log.Printf("[DEBUG]      primitive array: %s %v",
+	a.logger.Debug("primitive array: %s %v",
 		dump.ElementType,
 		retval)
 	return retval
