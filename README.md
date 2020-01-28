@@ -20,9 +20,8 @@ TODO:
 * hashmap の容量の計算がうまくいってない
 * logger にインデントの概念を導入する
 
-* stringbuilder の計算あうようにする！！！！
-
-
 https://gist.github.com/arturmkrtchyan/43d6135e8a15798cc46c
 
 http://btoddb-java-sizing.blogspot.com/
+
+https://github.com/openjdk/jdk/blob/6be7841937944364d365b33a795e7aa89dac2c58/src/hotspot/share/services/heapDumper.cpp
