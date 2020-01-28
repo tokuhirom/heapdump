@@ -29,7 +29,8 @@ func (a *Tester) AssertSize(targetClass string, expectedRetainedSize uint64) {
 	}
 
 	if len(sizeList) != 1 {
-		a.t.Fatalf("Only 1 %v instance exists",
+		a.t.Fatalf("Only %v %v instance exists",
+			len(sizeList),
 			targetClass)
 	}
 	if sizeList[0] != expectedRetainedSize {
@@ -82,11 +83,11 @@ func testInstanceSize(
 }
 
 func TestEmpty(t *testing.T) {
-	testInstanceSize(t, "testdata/empty/empty.hprof", "Empty", 16)
+	testInstanceSize(t, "testdata/empty/heapdump.hprof", "Object1", 16)
 }
 
 func TestInt(t *testing.T) {
-	testInstanceSize(t, "testdata/int/int.hprof", "IntHolder", 20)
+	testInstanceSize(t, "testdata/int/heapdump.hprof", "Object1", 20)
 }
 
 func TestObject(t *testing.T) {
@@ -136,5 +137,10 @@ func TestHashMap(t *testing.T) {
 func TestStringBuilder(t *testing.T) {
 	tester := NewTester("testdata/stringbuilder/heapdump.hprof", t)
 	tester.AssertSize("Object1", 93)
+}
+
+func TestByteArray(t *testing.T) {
+	tester := NewTester("testdata/bytearray/heapdump.hprof", t)
+	tester.AssertSize("Object1", 53)
 }
 

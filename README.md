@@ -23,3 +23,6 @@ TODO:
 * stringbuilder の計算あうようにする！！！！
 
 
+https://gist.github.com/arturmkrtchyan/43d6135e8a15798cc46c
+
+http://btoddb-java-sizing.blogspot.com/

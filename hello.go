@@ -113,6 +113,8 @@ func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
 }
 
 func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
+	a.logger.Info("Opening %v", heapFilePath)
+
 	f, err := os.Open(heapFilePath)
 	if err != nil {
 		return err
@@ -327,6 +329,8 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 	// instance field を舐めてサイズを計算する。super があればそこも全てみる。
 
 	// 全てのインスタンスは 16 byte かかるっぽい。
+	// https://weekly-geekly.github.io/articles/447848/index.html
+	// On a 64-bit jvm, the object header consists of 16 bytes. Arrays are additionally 4 bytes.
 
 	size := uint64(16 + len(instanceDump.GetValues()))
 	values := instanceDump.GetValues()
@@ -355,11 +359,6 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 	return size
 }
 
-type Fieldish interface {
-	GetType() hprofdata.HProfValueType
-	GetNameId() uint64
-}
-
 func (a HeapDumpAnalyzer) scanInstance(
 	fields []*hprofdata.HProfClassDump_InstanceField,
 	values []byte,
@@ -375,31 +374,40 @@ func (a HeapDumpAnalyzer) scanInstance(
 			// TODO 32bit support(特にやる気なし)
 			objectIdBytes := values[idx : idx+8]
 			objectId := binary.BigEndian.Uint64(objectIdBytes)
-			a.logger.Trace("NAMEEEEE=%v type=%v objectId=%v",
-				a.nameId2string[nameId], field.Type, objectId)
 			if objectId == 0 {
 				// the field contains null
 				a.logger.Trace("object field: name=%v oid=NULL",
 					a.nameId2string[nameId])
 			} else {
-				instanceDump := a.objectId2instanceDump[objectId]
-				if instanceDump != nil {
-					name := a.nameId2string[a.classObjectId2classNameId[instanceDump.ClassObjectId]]
-					switch name {
-					case "java/lang/Integer":
-					case "java/lang/Short":
-					case "java/lang/Long":
-					case "java/lang/Byte":
-					case "java/lang/Char":
-					case "java/lang/Double":
-					case "java/lang/Float":
-					case "java/lang/Boolean":
-						a.logger.Trace("special object field: name=%v oid=%v",
-							a.nameId2string[nameId],
-							objectId)
-						// primitive wrappers are embedded? maybe.
-						// nan boxing かな？
-					default:
+				/*
+					instanceDump := a.objectId2instanceDump[objectId]
+					if instanceDump != nil {
+						name := a.nameId2string[a.classObjectId2classNameId[instanceDump.ClassObjectId]]
+						switch name {
+						case "java/lang/Integer":
+						case "java/lang/Short":
+						case "java/lang/Long":
+						case "java/lang/Byte":
+						case "java/lang/Char":
+						case "java/lang/Double":
+						case "java/lang/Float":
+						case "java/lang/Boolean":
+							a.logger.Trace("special object field: name=%v oid=%v",
+								a.nameId2string[nameId],
+								objectId)
+							// primitive wrappers are embedded? maybe.
+							// nan boxing かな？
+						default:
+							a.logger.Trace("start:: object field: name=%v oid=%v",
+								a.nameId2string[nameId],
+								objectId)
+							n := a.retainedSizeInstance(objectId, seen)
+							a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
+								a.nameId2string[nameId],
+								objectId, n)
+							size += n
+						}
+					} else {
 						a.logger.Trace("start:: object field: name=%v oid=%v",
 							a.nameId2string[nameId],
 							objectId)
@@ -409,16 +417,16 @@ func (a HeapDumpAnalyzer) scanInstance(
 							objectId, n)
 						size += n
 					}
-				} else {
-					a.logger.Trace("start:: object field: name=%v oid=%v",
-						a.nameId2string[nameId],
-						objectId)
-					n := a.retainedSizeInstance(objectId, seen)
-					a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
-						a.nameId2string[nameId],
-						objectId, n)
-					size += n
-				}
+				*/
+				a.logger.Trace("start:: object field: name=%v oid=%v",
+					a.nameId2string[nameId],
+					objectId)
+				n := a.retainedSizeInstance(objectId, seen)
+				a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
+					a.nameId2string[nameId],
+					objectId, n)
+				size += n
+
 			}
 			idx += 8
 		// Boolean. Takes 0 or 1. One byte.
@@ -609,7 +617,10 @@ func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDu
 
 func (a HeapDumpAnalyzer) calcPrimitiveArraySize(dump *hprofdata.HProfPrimitiveArrayDump) uint64 {
 	size := parser.ValueSize[dump.ElementType]
-	retval := uint64(4 + (len(dump.Values) * size))
+	// https://weekly-geekly.github.io/articles/447848/index.html
+	// On a 64-bit jvm, the object header consists of 16 bytes. Arrays are additionally 4 bytes.
+	// http://btoddb-java-sizing.blogspot.com/
+	retval := uint64(16 + 4 + 4 + (len(dump.Values) * size))
 	a.logger.Debug("primitive array: %s %v",
 		dump.ElementType,
 		retval)
@@ -623,29 +634,6 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 	return 0
 }
 
-func parseIt() error {
-	heapFilePath := "testdata/stringbuilder/heapdump.hprof"
-
-	// calculate the size of each instance objects.
-	// 途中で sleep とか適宜入れる？
-	analyzer := NewHeapDumpAnalyzer(true)
-	err := analyzer.Scan(heapFilePath)
-	if err != nil {
-		return err
-	}
-
-	analyzer.CalculateSizeOfInstancesByName("java/lang/StringBuilder")
-	//analyzer.CalculateSizeOfInstancesByName("jdk/internal/module/IllegalAccessLogger")
-	//analyzer.CalculateSizeOfInstancesByName("Object1")
-	//analyzer.CalculateSizeOfInstances()
-
-	//analyzer.DumpInclusiveRanking()
-	//analyzer.DumpExclusiveRanking()
-	//analyzer.ShowTotalClasses()
-
-	return nil
-}
-
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	filter := &logutils.LevelFilter{
@@ -655,8 +643,23 @@ func main() {
 	}
 	log.SetOutput(filter)
 
-	err := parseIt()
+	heapFilePath := "testdata/bytearray/heapdump.hprof"
+
+	// calculate the size of each instance objects.
+	// 途中で sleep とか適宜入れる？
+	analyzer := NewHeapDumpAnalyzer(true)
+	err := analyzer.Scan(heapFilePath)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	//analyzer.CalculateSizeOfInstancesByName("java/lang/StringBuilder")
+	//analyzer.CalculateSizeOfInstancesByName("jdk/internal/module/IllegalAccessLogger")
+	//analyzer.CalculateSizeOfInstancesByName("Object1")
+	//analyzer.CalculateSizeOfInstancesByName("java/lang/Short")
+	//analyzer.CalculateSizeOfInstances()
+
+	analyzer.DumpInclusiveRanking()
+	//analyzer.DumpExclusiveRanking()
+	//analyzer.ShowTotalClasses()
 }

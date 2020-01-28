@@ -1,11 +1,11 @@
 import java.lang.ProcessHandle;
 import java.io.File;  
 
-class Empty {
+class Object1 {
 }
 
-public class EmptyTestData {
-    private static Empty foo = new Empty();
+public class TestData {
+    private static Object1 foo = new Object1();
 
     public static void main(String[] args) throws Exception {
         String dumpFileName = args[0];
