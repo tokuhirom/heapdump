@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/logutils"
 	"io"
 	"log"
-	"math"
 	"os"
 	"sort"
 	"strings"
@@ -669,7 +668,7 @@ func main() {
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
 	analyzer := NewHeapDumpAnalyzer(true)
-	err := analyzer.Scan(heapFilePath)
+	err = analyzer.Scan(heapFilePath)
 	if err != nil {
 		log.Fatal(err)
 	}
