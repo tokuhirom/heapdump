@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"flag"
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"github.com/hashicorp/logutils"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 )
 
 type Logger struct {
@@ -53,6 +55,7 @@ type HeapDumpAnalyzer struct {
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
 	logger                           *Logger
 	debug                            bool
+	sizeCache                        map[uint64]uint64
 }
 
 func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
@@ -66,6 +69,7 @@ func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
 	m.logger = NewLogger()
 	m.debug = debug
+	m.sizeCache = make(map[uint64]uint64)
 	return m
 }
 
@@ -187,6 +191,12 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking() {
 		objectIds := a.classObjectId2objectIds[classObjectId]
 		classNameId := a.classObjectId2classNameId[classObjectId]
 		name := a.nameId2string[classNameId]
+
+		if strings.HasPrefix(name, "jdk/internal/") {
+			a.logger.Debug("Skip internal class: %v", name)
+			continue
+		}
+
 		for _, objectId := range objectIds {
 			a.logger.Info("Starting scan %v(classObjectId=%v, objectId=%v)\n",
 				name, classObjectId, objectId)
@@ -236,6 +246,10 @@ func (a HeapDumpAnalyzer) ShowTotalClasses() {
 }
 
 func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen) uint64 {
+	if size, ok := a.sizeCache[objectId]; ok {
+		return size
+	}
+
 	if seen == nil {
 		panic("Missing seen")
 	}
@@ -345,6 +359,7 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 		objectId,
 		size, seen)
 
+	a.sizeCache[objectId] = size
 	return size
 }
 
@@ -608,14 +623,33 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+
+	verbose := flag.Bool("v", false, "Verbose")
+	veryVerbose := flag.Bool("vv", false, "Very Verbose")
+	targetClassName := flag.String("target", "", "Target class name")
+
+	flag.Parse()
+	args := flag.Args()
+	if len(args) != 1 {
+		log.Fatal("Usage: heapdump path/to/heapdump.hprof")
+	}
+
+	heapFilePath := args[0]
+
+	minLevel := "INFO"
+	if *verbose {
+		minLevel = "DEBUG"
+	}
+	if *veryVerbose {
+		minLevel = "TRACE"
+	}
+
 	filter := &logutils.LevelFilter{
 		Levels:   []logutils.LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
-		MinLevel: logutils.LogLevel("TRACE"),
+		MinLevel: logutils.LogLevel(minLevel),
 		Writer:   os.Stdout,
 	}
 	log.SetOutput(filter)
-
-	heapFilePath := "testdata/hashmap/heapdump.hprof"
 
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
@@ -625,13 +659,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	//analyzer.CalculateSizeOfInstancesByName("java/lang/StringBuilder")
-	//analyzer.CalculateSizeOfInstancesByName("jdk/internal/module/IllegalAccessLogger")
-	//analyzer.CalculateSizeOfInstancesByName("Object1")
-	//analyzer.CalculateSizeOfInstancesByName("java/lang/Short")
-	//analyzer.CalculateSizeOfInstances()
-
-	analyzer.DumpInclusiveRanking()
-	//analyzer.DumpExclusiveRanking()
-	//analyzer.ShowTotalClasses()
+	if targetClassName != nil && len(*targetClassName) > 0 {
+		analyzer.CalculateSizeOfInstancesByName(*targetClassName)
+	} else {
+		analyzer.DumpInclusiveRanking()
+	}
 }
