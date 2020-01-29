@@ -1,5 +1,15 @@
 # heapdump
 
+## Goal
+
+ 1. Generate retained size based class histogram from hprof(heapdump file)
+  * with less memory
+  * and safe(using rlimit).
+ 2. Generate small 1 file index file from heap dump file.
+ 3. Share the analyzing results with team members.
+
+## Note
+
  * class object ID -> class name ID
  * name ID -> string
  * class object ID -> list(object ID)
