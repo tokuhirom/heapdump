@@ -8,9 +8,11 @@ import (
 	"github.com/hashicorp/logutils"
 	"io"
 	"log"
+	"math"
 	"os"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 type Logger struct {
@@ -650,6 +652,19 @@ func main() {
 		Writer:   os.Stdout,
 	}
 	log.SetOutput(filter)
+
+	var rLimit syscall.Rlimit
+	err := syscall.Getrlimit(syscall.RLIMIT_AS, &rLimit)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 調整可能なように
+	rLimit.Cur = 4 * 1000_000_000
+	rLimit.Max = 4 * 1000_000_000
+	err = syscall.Setrlimit(syscall.RLIMIT_AS, &rLimit)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
