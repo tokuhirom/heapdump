@@ -25,3 +25,9 @@ https://gist.github.com/arturmkrtchyan/43d6135e8a15798cc46c
 http://btoddb-java-sizing.blogspot.com/
 
 https://github.com/openjdk/jdk/blob/6be7841937944364d365b33a795e7aa89dac2c58/src/hotspot/share/services/heapDumper.cpp
+
+https://github.com/openjdk/jdk/blob/6be7841937944364d365b33a795e7aa89dac2c58/src/hotspot/share/services/heapDumper.cpp
+
+https://github.com/oracle/visualvm
+https://github.com/bpupadhyaya/openjdk-8/tree/master/jdk/src/share/classes/com/sun/tools/hat
+https://openjdk.java.net/jeps/241
