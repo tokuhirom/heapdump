@@ -58,7 +58,12 @@ type HeapDumpAnalyzer struct {
 	debug                            bool
 	sizeCache                        map[uint64]uint64
 	isRoot                           map[uint64]bool
-	jniGlobals                       map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
+	rootJniGlobals                   map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
+	rootJniLocal                     map[uint64]bool
+	rootJavaFrame                    map[uint64]bool
+	rootStickyClass                  map[uint64]bool
+	rootThreadObj                    map[uint64]bool
+	rootMonitorUsed                  map[uint64]bool
 }
 
 func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
@@ -74,7 +79,12 @@ func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
 	m.debug = debug
 	m.sizeCache = make(map[uint64]uint64)
 	m.isRoot = make(map[uint64]bool)
-	m.jniGlobals = make(map[uint64]bool)
+	m.rootJniGlobals = make(map[uint64]bool)
+	m.rootJniLocal = make(map[uint64]bool)
+	m.rootJavaFrame = make(map[uint64]bool)
+	m.rootStickyClass = make(map[uint64]bool)
+	m.rootThreadObj = make(map[uint64]bool)
+	m.rootMonitorUsed = make(map[uint64]bool)
 	return m
 }
 
@@ -155,25 +165,25 @@ func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 			//cs.countJNIGlobal++
 			//a.rootObjectId[o.GetObjectId()] = true
 			a.logger.Info("Found JNI Global: %v", o.GetObjectId())
-			a.jniGlobals[o.GetObjectId()] = true
+			a.rootJniGlobals[o.GetObjectId()] = true
 		case *hprofdata.HProfRootJNILocal:
 			//key = cs.countJNILocal
 			//cs.countJNILocal++
-			a.isRoot[o.GetObjectId()] = true
+			a.rootJniLocal[o.GetObjectId()] = true
 		case *hprofdata.HProfRootJavaFrame:
 			//key = cs.countJavaFrame
 			//cs.countJavaFrame++
-			a.isRoot[o.GetObjectId()] = true
+			a.rootJavaFrame[o.GetObjectId()] = true
 		case *hprofdata.HProfRootStickyClass:
 			//key = cs.countStickyClass
 			//cs.countStickyClass++
-			a.isRoot[o.GetObjectId()] = true
+			a.rootStickyClass[o.GetObjectId()] = true
 		case *hprofdata.HProfRootThreadObj:
 			//key = cs.countThreadObj
 			//cs.countThreadObj++
-			a.isRoot[o.GetThreadObjectId()] = true
+			a.rootThreadObj[o.GetThreadObjectId()] = true
 		case *hprofdata.HProfRootMonitorUsed:
-			a.isRoot[o.GetObjectId()] = true
+			a.rootMonitorUsed[o.GetObjectId()] = true
 		default:
 			log.Printf("unknown record type!!: %#v", record)
 		}
@@ -630,12 +640,17 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 	return 0
 }
 
-func (a HeapDumpAnalyzer) GetJniGlobals() []uint64 {
+func keys(d map[uint64]bool) []uint64 {
 	var keys []uint64
-	for g := range a.jniGlobals {
-		keys = append(keys, g)
+	for key := range d {
+		keys = append(keys, key)
 	}
 	return keys
+
+}
+
+func (a HeapDumpAnalyzer) GetJniGlobals() []uint64 {
+	return keys(a.rootJniGlobals)
 }
 
 func main() {
@@ -692,6 +707,12 @@ func main() {
 
 	rootScanner := NewRootScanner(analyzer.logger)
 	rootScanner.ScanRoot(analyzer, analyzer.GetJniGlobals())
+	rootScanner.ScanRoot(analyzer, keys(analyzer.rootJniLocal))
+	rootScanner.ScanRoot(analyzer, keys(analyzer.rootJavaFrame))
+	rootScanner.ScanRoot(analyzer, keys(analyzer.rootStickyClass))
+	rootScanner.ScanRoot(analyzer, keys(analyzer.rootThreadObj))
+	rootScanner.ScanRoot(analyzer, keys(analyzer.rootMonitorUsed))
+
 	if *rootScanOnly {
 		os.Exit(0)
 	}

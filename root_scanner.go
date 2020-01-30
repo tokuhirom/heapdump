@@ -28,7 +28,7 @@ func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) {
 		r.logger.Debug("rootObjectId=%v", rootObjectId)
 		r.scan(rootObjectId, 0, rootObjectId, a, seen)
 	}
-	r.logger.Info("--- /ScanRoot ---")
+	r.logger.Info("--- /ScanRoot --- %v %v %v", rootObjectIds, len(r.nearestGcRoot), len(r.gcRootDistance))
 }
 
 func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
@@ -44,11 +44,11 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 
 	seen.Add(objectId)
 
-	r.RegisterRoot(rootObjectId, rootObjectId, distance)
+	r.RegisterRoot(rootObjectId, objectId, distance)
 
 	instanceDump := a.objectId2instanceDump[objectId]
 	if instanceDump != nil {
-		r.logger.Info("instance dump = %v", instanceDump.ObjectId)
+		r.logger.Info("instance dump = %v", objectId)
 
 		classDump := a.classObjectId2classDump[instanceDump.ClassObjectId]
 		values := instanceDump.GetValues()
@@ -58,6 +58,8 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 			for _, instanceField := range classDump.InstanceFields {
 				if instanceField.Type == hprofdata.HProfValueType_OBJECT {
 					// TODO 32bit support
+					r.logger.Info("instance field = %v.%v", instanceDump.ObjectId,
+						a.nameId2string[instanceField.NameId])
 					objectIdBytes := values[idx : idx+8]
 					objectId := binary.BigEndian.Uint64(objectIdBytes)
 					r.scan(rootObjectId, distance+1, objectId, a, seen)
@@ -77,7 +79,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	classDump := a.classObjectId2classDump[objectId]
 	if classDump != nil {
 		// scan super
-		r.logger.Info("class dump = %v", classDump)
+		r.logger.Info("class dump = %v", objectId)
 
 		idx := 0
 		for _, field := range classDump.StaticFields {
@@ -101,7 +103,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	// object array
 	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
-		r.logger.Info("object array = %v", objectArrayDump)
+		r.logger.Info("object array = %v", objectId)
 		for _, objectId := range objectArrayDump.ElementObjectIds {
 			r.scan(rootObjectId, distance+1, objectId, a, seen)
 		}
@@ -111,7 +113,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	// primitive array
 	primitiveArrayDump := a.arrayObjectId2primitiveArrayDump[objectId]
 	if primitiveArrayDump != nil {
-		r.logger.Info("primitive array = %v", primitiveArrayDump)
+		r.logger.Info("primitive array = %v", objectId)
 		return
 	}
 
@@ -125,8 +127,12 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 
 func (r RootScanner) RegisterRoot(rootObjectId uint64, targetObjectId uint64, distance int) {
 	if currentDistance, ok := r.gcRootDistance[targetObjectId]; !ok {
+		r.logger.Trace("RegisterRoot: rootObjectId=%v targetObjectId=%v distance=%v currentDistance=%v",
+			rootObjectId, targetObjectId, distance, currentDistance)
 		r.setRegisterRoot(rootObjectId, targetObjectId, distance)
 	} else {
+		r.logger.Trace("RegisterRoot: rootObjectId=%v targetObjectId=%v distance=%v currentDistance=%v",
+			rootObjectId, targetObjectId, distance, currentDistance)
 		if currentDistance > distance {
 			r.setRegisterRoot(rootObjectId, targetObjectId, distance)
 		}
@@ -134,8 +140,6 @@ func (r RootScanner) RegisterRoot(rootObjectId uint64, targetObjectId uint64, di
 }
 
 func (r RootScanner) setRegisterRoot(rootObjectId uint64, targetObjectId uint64, distance int) {
-	r.logger.Trace("register root. rootObjectId=%v targetObjectId=%v distance=%v",
-		rootObjectId, targetObjectId, distance)
 	r.gcRootDistance[targetObjectId] = distance
 	r.nearestGcRoot[targetObjectId] = rootObjectId
 }
