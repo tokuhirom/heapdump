@@ -657,7 +657,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// 調整可能なように
+	// TODO 調整可能なように
 	rLimit.Cur = 4 * 1000_000_000
 	rLimit.Max = 4 * 1000_000_000
 	err = syscall.Setrlimit(syscall.RLIMIT_AS, &rLimit)
