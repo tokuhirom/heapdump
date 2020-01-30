@@ -362,8 +362,7 @@ func (a HeapDumpAnalyzer) scanInstance(
 
 	for _, field := range fields {
 		nameId := field.NameId
-		switch field.Type {
-		case hprofdata.HProfValueType_OBJECT:
+		if field.Type  == hprofdata.HProfValueType_OBJECT {
 			// TODO 32bit support(特にやる気なし)
 			objectIdBytes := values[idx : idx+8]
 			objectId := binary.BigEndian.Uint64(objectIdBytes)
@@ -373,45 +372,6 @@ func (a HeapDumpAnalyzer) scanInstance(
 					className,
 					a.nameId2string[nameId])
 			} else {
-				/*
-					instanceDump := a.objectId2instanceDump[objectId]
-					if instanceDump != nil {
-						name := a.nameId2string[a.classObjectId2classNameId[instanceDump.ClassObjectId]]
-						switch name {
-						case "java/lang/Integer":
-						case "java/lang/Short":
-						case "java/lang/Long":
-						case "java/lang/Byte":
-						case "java/lang/Char":
-						case "java/lang/Double":
-						case "java/lang/Float":
-						case "java/lang/Boolean":
-							a.logger.Trace("special object field: name=%v oid=%v",
-								a.nameId2string[nameId],
-								objectId)
-							// primitive wrappers are embedded? maybe.
-							// nan boxing かな？
-						default:
-							a.logger.Trace("start:: object field: name=%v oid=%v",
-								a.nameId2string[nameId],
-								objectId)
-							n := a.retainedSizeInstance(objectId, seen)
-							a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
-								a.nameId2string[nameId],
-								objectId, n)
-							size += n
-						}
-					} else {
-						a.logger.Trace("start:: object field: name=%v oid=%v",
-							a.nameId2string[nameId],
-							objectId)
-						n := a.retainedSizeInstance(objectId, seen)
-						a.logger.Trace("finished:: object field: name=%v oid=%v, size=%v",
-							a.nameId2string[nameId],
-							objectId, n)
-						size += n
-					}
-				*/
 				a.logger.Trace("start:: object field: className=%v name=%v oid=%v",
 					className,
 					a.nameId2string[nameId],
@@ -425,45 +385,9 @@ func (a HeapDumpAnalyzer) scanInstance(
 
 			}
 			idx += 8
-		// Boolean. Takes 0 or 1. One byte.
-		case hprofdata.HProfValueType_BOOLEAN:
-			a.logger.Trace("boolean Field: %v", a.nameId2string[nameId])
-			idx += 1
-		// Character. Two bytes.
-		case hprofdata.HProfValueType_CHAR:
-			a.logger.Trace("char Field: %v", a.nameId2string[nameId])
-			idx += 2
-		// Float. 4 bytes
-		case hprofdata.HProfValueType_FLOAT:
-			a.logger.Trace("float Field: %v", a.nameId2string[nameId])
-			idx += 4
-		// Double. 8 bytes.
-		case hprofdata.HProfValueType_DOUBLE:
-			a.logger.Trace("double Field: %v", a.nameId2string[nameId])
-			idx += 8
-		// Byte. One byte.
-		case hprofdata.HProfValueType_BYTE:
-			a.logger.Trace("byte Field: %v", a.nameId2string[nameId])
-			idx += 1
-		// Short. Two bytes.
-		case hprofdata.HProfValueType_SHORT:
-			a.logger.Trace("short Field: %v %v",
-				a.nameId2string[nameId],
-				int16(binary.BigEndian.Uint16(values[idx:idx+2])))
-			idx += 2
-		// Integer. 4 bytes.
-		case hprofdata.HProfValueType_INT:
-			a.logger.Trace("int Field: %v, %v",
-				a.nameId2string[nameId],
-				int32(binary.BigEndian.Uint32(values[idx:idx+4])))
-			idx += 4
-		// Long. 8 bytes.
-		case hprofdata.HProfValueType_LONG:
-			a.logger.Trace("long Field: %v",
-				a.nameId2string[nameId])
-			idx += 8
-		default:
-			log.Fatalf("Unknown value type: %x", field.Type)
+		} else {
+			a.logger.Trace("Primitive Field: %v", a.nameId2string[nameId])
+			idx += parser.ValueSize[field.Type]
 		}
 	}
 
