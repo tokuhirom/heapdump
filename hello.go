@@ -533,19 +533,6 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 	return 0
 }
 
-func keys(d map[uint64]bool) []uint64 {
-	var keys []uint64
-	for key := range d {
-		keys = append(keys, key)
-	}
-	return keys
-
-}
-
-func (a HeapDumpAnalyzer) GetJniGlobals() []uint64 {
-	return keys(a.rootJniGlobals)
-}
-
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
@@ -599,7 +586,7 @@ func main() {
 	}
 
 	rootScanner := NewRootScanner(analyzer.logger)
-	rootScanner.ScanRoot(analyzer, analyzer.GetJniGlobals())
+	rootScanner.ScanRoot(analyzer, keys(analyzer.rootJniGlobals))
 	rootScanner.ScanRoot(analyzer, keys(analyzer.rootJniLocal))
 	rootScanner.ScanRoot(analyzer, keys(analyzer.rootJavaFrame))
 	rootScanner.ScanRoot(analyzer, keys(analyzer.rootStickyClass))
