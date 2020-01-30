@@ -2,6 +2,10 @@ package main
 
 import "log"
 
+type Logger struct {
+	indent int
+}
+
 func NewLogger() *Logger {
 	m := new(Logger)
 	m.indent = 0
@@ -42,4 +46,3 @@ func (a *Logger) Warn(msg string, v ...interface{}) {
 func (a *Logger) Error(msg string, v ...interface{}) {
 	log.Printf("[ERROR] "+a.spaces()+msg, v...)
 }
-
