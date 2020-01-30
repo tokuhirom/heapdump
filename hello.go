@@ -57,6 +57,8 @@ type HeapDumpAnalyzer struct {
 	logger                           *Logger
 	debug                            bool
 	sizeCache                        map[uint64]uint64
+	isRoot                           map[uint64]bool
+	jniGlobals                       map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
 }
 
 func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
@@ -71,6 +73,8 @@ func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
 	m.logger = NewLogger()
 	m.debug = debug
 	m.sizeCache = make(map[uint64]uint64)
+	m.isRoot = make(map[uint64]bool)
+	m.jniGlobals = make(map[uint64]bool)
 	return m
 }
 
@@ -149,25 +153,27 @@ func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 		case *hprofdata.HProfRootJNIGlobal:
 			//key = cs.countJNIGlobal
 			//cs.countJNIGlobal++
-			log.Printf("[STTT]5 %v %v", o.GetObjectId(), o.GetJniGlobalRefId())
 			//a.rootObjectId[o.GetObjectId()] = true
+			a.logger.Info("Found JNI Global: %v", o.GetObjectId())
+			a.jniGlobals[o.GetObjectId()] = true
 		case *hprofdata.HProfRootJNILocal:
 			//key = cs.countJNILocal
 			//cs.countJNILocal++
-			log.Printf("[STTT]4 %v %v", o.GetObjectId(), o.GetThreadSerialNumber())
+			a.isRoot[o.GetObjectId()] = true
 		case *hprofdata.HProfRootJavaFrame:
 			//key = cs.countJavaFrame
 			//cs.countJavaFrame++
-			log.Printf("[STTT] 3%v %v", o.GetObjectId(), o.GetFrameNumberInStackTrace())
+			a.isRoot[o.GetObjectId()] = true
 		case *hprofdata.HProfRootStickyClass:
 			//key = cs.countStickyClass
 			//cs.countStickyClass++
-			log.Printf("[STTT]2 %v %v", o.GetObjectId(), o.GetObjectId())
+			a.isRoot[o.GetObjectId()] = true
 		case *hprofdata.HProfRootThreadObj:
 			//key = cs.countThreadObj
 			//cs.countThreadObj++
-			log.Printf("[STTT]1 %v", o.GetThreadObjectId())
+			a.isRoot[o.GetThreadObjectId()] = true
 		case *hprofdata.HProfRootMonitorUsed:
+			a.isRoot[o.GetObjectId()] = true
 		default:
 			log.Printf("unknown record type!!: %#v", record)
 		}
@@ -270,10 +276,12 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen) uint
 	instanceDump := a.objectId2instanceDump[objectId]
 	if instanceDump != nil {
 		name := a.nameId2string[a.classObjectId2classNameId[instanceDump.ClassObjectId]]
+		// XXX why??
 		if name == "java/lang/String" {
 			// String is a special class.
 			return 0
 		}
+		// XXX why??
 		if name == "java/lang/Module" {
 			// String is a special class.
 			return 0
@@ -622,11 +630,20 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 	return 0
 }
 
+func (a HeapDumpAnalyzer) GetJniGlobals() []uint64 {
+	var keys []uint64
+	for g := range a.jniGlobals {
+		keys = append(keys, g)
+	}
+	return keys
+}
+
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
 	verbose := flag.Bool("v", false, "Verbose")
 	veryVerbose := flag.Bool("vv", false, "Very Verbose")
+	rootScanOnly := flag.Bool("root", false, "root scan only")
 	targetClassName := flag.String("target", "", "Target class name")
 
 	flag.Parse()
@@ -671,6 +688,12 @@ func main() {
 	err = analyzer.Scan(heapFilePath)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	rootScanner := NewRootScanner(analyzer.logger)
+	rootScanner.ScanRoot(analyzer, analyzer.GetJniGlobals())
+	if *rootScanOnly {
+		os.Exit(0)
 	}
 
 	if targetClassName != nil && len(*targetClassName) > 0 {
