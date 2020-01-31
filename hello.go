@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"flag"
+	"fmt"
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"github.com/hashicorp/logutils"
@@ -25,7 +26,7 @@ type HeapDumpAnalyzer struct {
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
 	logger                           *Logger
 	debug                            bool
-	sizeCache                        map[uint64]uint64
+	sizeCache                        map[string]uint64
 	isRoot                           map[uint64]bool
 	rootJniGlobals                   map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
 	rootJniLocal                     map[uint64]bool
@@ -46,7 +47,7 @@ func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
 	m.logger = NewLogger()
 	m.debug = debug
-	m.sizeCache = make(map[uint64]uint64)
+	m.sizeCache = make(map[string]uint64)
 	m.isRoot = make(map[uint64]bool)
 	m.rootJniGlobals = make(map[uint64]bool)
 	m.rootJniLocal = make(map[uint64]bool)
@@ -196,17 +197,69 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 		classObjectId2objectCount[classObjectId] = len(objectIds)
 	}
 
+	// sort by retained size
 	sort.Slice(classObjectIds, func(i, j int) bool {
 		return classObjectId2objectSize[classObjectIds[i]] < classObjectId2objectSize[classObjectIds[j]]
 	})
+
+	// print result
 	for _, classObjectId := range classObjectIds {
 		classNameId := a.classObjectId2classNameId[classObjectId]
 		name := a.nameId2string[classNameId]
-		log.Printf("[INFO] %10d(count=%5d)= %s\n",
+		log.Printf("[INFO] softSize=%10d strongSize=%10d(count=%5d)= %s\n",
+			a.calcSoftSizeByClassObjectId(classObjectId),
 			classObjectId2objectSize[classObjectId],
 			classObjectId2objectCount[classObjectId],
 			name)
 	}
+}
+
+func (a HeapDumpAnalyzer) calcSoftSizeByClassObjectId(classObjectId uint64) int {
+	size := 0
+	for _, objectId := range a.classObjectId2objectIds[classObjectId] {
+		size += a.calcSoftSize(objectId)
+	}
+	return size
+}
+
+func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
+	instanceDump := a.objectId2instanceDump[objectId]
+	if instanceDump != nil {
+		return len(instanceDump.Values)
+	}
+
+	classDump := a.classObjectId2classDump[objectId]
+	if classDump != nil {
+		idx := 0
+		for _, field := range classDump.StaticFields {
+			if field.Type == hprofdata.HProfValueType_OBJECT {
+				idx += 8
+			} else {
+				idx += parser.ValueSize[field.Type]
+			}
+		}
+		return idx
+	}
+
+	// object array
+	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
+	if objectArrayDump != nil {
+		return len(objectArrayDump.ElementObjectIds) * 8
+	}
+
+	// primitive array
+	primitiveArrayDump := a.arrayObjectId2primitiveArrayDump[objectId]
+	if primitiveArrayDump != nil {
+		return len(primitiveArrayDump.Values) * parser.ValueSize[primitiveArrayDump.ElementType]
+	}
+
+	log.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v cd=%v",
+		objectId,
+		a.arrayObjectId2primitiveArrayDump[objectId],
+		a.arrayObjectId2objectArrayDump[objectId],
+		a.objectId2instanceDump[objectId],
+		a.classObjectId2classDump[objectId])
+	return -1 // should not reach here
 }
 
 func (a HeapDumpAnalyzer) DumpExclusiveRanking() {
@@ -236,6 +289,17 @@ func (a HeapDumpAnalyzer) GetRetainedSize(objectId uint64, rootScanner *RootScan
 	return a.retainedSizeInstance(rootObjectId, objectId, seen, rootScanner)
 }
 
+func (a HeapDumpAnalyzer) getSizeCache(rootObjectId uint64, objectId uint64) (uint64, bool) {
+	key := fmt.Sprintf("%v%v", rootObjectId, objectId)
+	size, ok := a.sizeCache[key]
+	return size, ok
+}
+
+func (a HeapDumpAnalyzer) setSizeCache(rootObjectId uint64, objectId uint64, size uint64) {
+	key := fmt.Sprintf("%v%v", rootObjectId, objectId)
+	a.sizeCache[key] = size
+}
+
 func (a HeapDumpAnalyzer) retainedSizeInstance(rootObjectId uint64, objectId uint64, seen *Seen, rootScanner *RootScanner) uint64 {
 	if seen == nil {
 		panic("Missing seen")
@@ -245,7 +309,7 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(rootObjectId uint64, objectId uin
 		return 0
 	}
 
-	if size, ok := a.sizeCache[objectId]; ok {
+	if size, ok := a.getSizeCache(rootObjectId, objectId); ok {
 		return size
 	}
 
@@ -353,7 +417,7 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 		objectId,
 		size, seen)
 
-	a.sizeCache[objectId] = size
+	a.setSizeCache(rootObjectId, objectId, size)
 	return size
 }
 
