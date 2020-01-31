@@ -211,7 +211,7 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 
 func (a HeapDumpAnalyzer) DumpExclusiveRanking() {
 	var classObjectIds []uint64
-	for k, _ := range a.classObjectId2objectIds {
+	for k := range a.classObjectId2objectIds {
 		classObjectIds = append(classObjectIds, k)
 	}
 	sort.Slice(classObjectIds, func(i, j int) bool {
