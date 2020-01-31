@@ -225,7 +225,7 @@ func (a HeapDumpAnalyzer) calcSoftSizeByClassObjectId(classObjectId uint64) int 
 func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
 	instanceDump := a.objectId2instanceDump[objectId]
 	if instanceDump != nil {
-		return len(instanceDump.Values)
+		return 16 + len(instanceDump.Values)
 	}
 
 	classDump := a.classObjectId2classDump[objectId]
