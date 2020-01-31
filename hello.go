@@ -237,16 +237,16 @@ func (a HeapDumpAnalyzer) GetRetainedSize(objectId uint64, rootScanner *RootScan
 }
 
 func (a HeapDumpAnalyzer) retainedSizeInstance(rootObjectId uint64, objectId uint64, seen *Seen, rootScanner *RootScanner) uint64 {
-	if size, ok := a.sizeCache[objectId]; ok {
-		return size
-	}
-
 	if seen == nil {
 		panic("Missing seen")
 	}
 	if seen.HasKey(objectId) { // recursive counting.
 		a.logger.Debug("Recursive counting occurred: %v", objectId)
 		return 0
+	}
+
+	if size, ok := a.sizeCache[objectId]; ok {
+		return size
 	}
 
 	seen.Add(objectId)
@@ -384,13 +384,18 @@ func (a HeapDumpAnalyzer) scanInstance(
 					className,
 					a.nameId2string[nameId],
 					objectId)
+				n := a.retainedSizeInstance(rootObjectId, objectId, seen, rootScanner)
 				if rootScanner.GetNearestGcRoot(objectId) == rootObjectId {
-					n := a.retainedSizeInstance(rootObjectId, objectId, seen, rootScanner)
 					a.logger.Trace("finished:: object field: className=%v name=%v oid=%v, size=%v",
 						className,
 						a.nameId2string[nameId],
 						objectId, n)
 					size += n
+				} else {
+					a.logger.Trace("IGNORE!!:: object field: className=%v name=%v oid=%v size=%v",
+						className,
+						a.nameId2string[nameId],
+						objectId, n)
 				}
 			}
 			idx += 8
