@@ -1,6 +1,9 @@
 package main
 
 import (
+	"github.com/hashicorp/logutils"
+	"log"
+	"os"
 	"testing"
 )
 
@@ -17,11 +20,21 @@ func NewTester(path string, t *testing.T) *Tester {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	filter := &logutils.LevelFilter{
+		Levels:   []logutils.LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
+		MinLevel: logutils.LogLevel("INFO"),
+		Writer:   os.Stdout,
+	}
+	log.SetOutput(filter)
+
 	return m
 }
 
 func (a *Tester) AssertSize(targetClass string, expectedRetainedSize uint64) {
-	sizeMap := a.analyzer.CalculateSizeOfInstancesByName(targetClass)
+	rootScanner := NewRootScanner(a.analyzer.logger)
+	rootScanner.ScanAll(a.analyzer)
+	sizeMap := a.analyzer.CalculateSizeOfInstancesByName(targetClass, rootScanner)
 
 	var sizeList []uint64
 	for _, size := range sizeMap {
@@ -42,7 +55,9 @@ func (a *Tester) AssertSize(targetClass string, expectedRetainedSize uint64) {
 }
 
 func (a *Tester) GetTotalSize(targetClass string) uint64 {
-	sizeMap := a.analyzer.CalculateSizeOfInstancesByName(targetClass)
+	rootScanner := NewRootScanner(a.analyzer.logger)
+	rootScanner.ScanAll(a.analyzer)
+	sizeMap := a.analyzer.CalculateSizeOfInstancesByName(targetClass, rootScanner)
 
 	totalSize := uint64(0)
 	for _, size := range sizeMap {

@@ -22,13 +22,13 @@ func NewRootScanner(logger *Logger) *RootScanner {
 }
 
 func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) {
-	r.logger.Info("--- ScanRoot ---: %v", rootObjectIds)
+	r.logger.Info("--- ScanRoot ---: %v", len(rootObjectIds))
 	seen := NewSeen()
 	for _, rootObjectId := range rootObjectIds {
 		r.logger.Debug("rootObjectId=%v", rootObjectId)
 		r.scan(rootObjectId, 0, rootObjectId, a, seen)
 	}
-	r.logger.Info("--- /ScanRoot --- %v %v %v", rootObjectIds, len(r.nearestGcRoot), len(r.gcRootDistance))
+	r.logger.Info("--- /ScanRoot --- %v %v", len(r.nearestGcRoot), len(r.gcRootDistance))
 }
 
 func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
@@ -48,7 +48,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 
 	instanceDump := a.objectId2instanceDump[objectId]
 	if instanceDump != nil {
-		r.logger.Info("instance dump = %v", objectId)
+		r.logger.Debug("instance dump = %v", objectId)
 
 		classDump := a.classObjectId2classDump[instanceDump.ClassObjectId]
 		values := instanceDump.GetValues()
@@ -58,7 +58,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 			for _, instanceField := range classDump.InstanceFields {
 				if instanceField.Type == hprofdata.HProfValueType_OBJECT {
 					// TODO 32bit support
-					r.logger.Info("instance field = %v.%v", instanceDump.ObjectId,
+					r.logger.Trace("instance field = %v.%v", instanceDump.ObjectId,
 						a.nameId2string[instanceField.NameId])
 					objectIdBytes := values[idx : idx+8]
 					objectId := binary.BigEndian.Uint64(objectIdBytes)
@@ -79,7 +79,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	classDump := a.classObjectId2classDump[objectId]
 	if classDump != nil {
 		// scan super
-		r.logger.Info("class dump = %v", objectId)
+		r.logger.Debug("class dump = %v", objectId)
 
 		idx := 0
 		for _, field := range classDump.StaticFields {
@@ -103,7 +103,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	// object array
 	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
-		r.logger.Info("object array = %v", objectId)
+		r.logger.Debug("object array = %v", objectId)
 		for _, objectId := range objectArrayDump.ElementObjectIds {
 			r.scan(rootObjectId, distance+1, objectId, a, seen)
 		}
@@ -113,7 +113,7 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	// primitive array
 	primitiveArrayDump := a.arrayObjectId2primitiveArrayDump[objectId]
 	if primitiveArrayDump != nil {
-		r.logger.Info("primitive array = %v", objectId)
+		r.logger.Debug("primitive array = %v", objectId)
 		return
 	}
 
@@ -142,4 +142,17 @@ func (r RootScanner) RegisterRoot(rootObjectId uint64, targetObjectId uint64, di
 func (r RootScanner) setRegisterRoot(rootObjectId uint64, targetObjectId uint64, distance int) {
 	r.gcRootDistance[targetObjectId] = distance
 	r.nearestGcRoot[targetObjectId] = rootObjectId
+}
+
+func (r RootScanner) GetNearestGcRoot(objectId uint64) uint64 {
+	return r.nearestGcRoot[objectId]
+}
+
+func (r RootScanner) ScanAll(analyzer *HeapDumpAnalyzer) {
+	r.ScanRoot(analyzer, keys(analyzer.rootJniGlobals))
+	r.ScanRoot(analyzer, keys(analyzer.rootJniLocal))
+	r.ScanRoot(analyzer, keys(analyzer.rootJavaFrame))
+	r.ScanRoot(analyzer, keys(analyzer.rootStickyClass))
+	r.ScanRoot(analyzer, keys(analyzer.rootThreadObj))
+	r.ScanRoot(analyzer, keys(analyzer.rootMonitorUsed))
 }
