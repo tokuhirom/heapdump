@@ -7,6 +7,7 @@ import (
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"github.com/hashicorp/logutils"
+	"golang.org/x/text/message"
 	"io"
 	"log"
 	"os"
@@ -203,14 +204,15 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 	})
 
 	// print result
+	p := message.NewPrinter(message.MatchLanguage("en"))
 	for _, classObjectId := range classObjectIds {
 		classNameId := a.classObjectId2classNameId[classObjectId]
 		name := a.nameId2string[classNameId]
-		log.Printf("[INFO] softSize=%10d strongSize=%10d(count=%5d)= %s\n",
+		log.Printf(p.Sprintf("[INFO] softSize=%10d strongSize=%10d(count=%5d)= %s\n",
 			a.calcSoftSizeByClassObjectId(classObjectId),
 			classObjectId2objectSize[classObjectId],
 			classObjectId2objectCount[classObjectId],
-			name)
+			name))
 	}
 }
 
