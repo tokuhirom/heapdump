@@ -163,7 +163,7 @@ func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 	log.Printf("[INFO] --- DumpInclusiveRanking")
 	var classObjectIds []uint64
-	for k, _ := range a.classObjectId2objectIds {
+	for k := range a.classObjectId2objectIds {
 		classObjectIds = append(classObjectIds, k)
 	}
 
