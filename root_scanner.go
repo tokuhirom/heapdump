@@ -22,13 +22,13 @@ func NewRootScanner(logger *Logger) *RootScanner {
 }
 
 func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) {
-	r.logger.Info("--- ScanRoot ---: %v", len(rootObjectIds))
+	r.logger.Debug("--- ScanRoot ---: %v", len(rootObjectIds))
 	seen := NewSeen()
 	for _, rootObjectId := range rootObjectIds {
 		r.logger.Debug("rootObjectId=%v", rootObjectId)
 		r.scan(rootObjectId, 0, rootObjectId, a, seen)
 	}
-	r.logger.Info("--- /ScanRoot --- %v %v", len(r.nearestGcRoot), len(r.gcRootDistance))
+	r.logger.Debug("--- /ScanRoot --- %v %v", len(r.nearestGcRoot), len(r.gcRootDistance))
 }
 
 func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
