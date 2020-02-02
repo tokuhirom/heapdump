@@ -83,11 +83,11 @@ func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 			if err == io.EOF {
 				break
 			}
-			log.Printf("Got parsing issue: %v", err)
+			a.logger.Warn("Got parsing issue: %v", err)
 			continue
 		}
 		if pos, err := f.Seek(0, 1); err == nil && pos-prev > (1<<30) {
-			log.Printf("currently %d GiB", pos/(1<<30))
+			a.logger.Info("currently %d GiB", pos/(1<<30))
 			prev = pos
 		}
 
