@@ -13,9 +13,9 @@ type Tester struct {
 }
 
 func NewTester(path string, t *testing.T) *Tester {
-	m:= new(Tester)
+	m := new(Tester)
 	m.t = t
-	m.analyzer = NewHeapDumpAnalyzer(false)
+	m.analyzer = NewHeapDumpAnalyzer(NewLogger(), false)
 	err := m.analyzer.Scan(path)
 	if err != nil {
 		t.Fatal(err)
@@ -163,4 +163,3 @@ func TestByteArray(t *testing.T) {
 	tester := NewTester("testdata/bytearray/heapdump.hprof", t)
 	tester.AssertSize("Object1", 53)
 }
-
