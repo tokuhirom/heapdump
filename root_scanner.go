@@ -8,15 +8,13 @@ import (
 )
 
 type RootScanner struct {
-	nearestGcRoot  map[uint64]uint64 // objectId -> gc root's object ID
-	gcRootDistance map[uint64]int    // objectId -> distance
-	logger         *Logger
+	parents map[uint64]map[uint64]bool // objectId -> count
+	logger  *Logger
 }
 
 func NewRootScanner(logger *Logger) *RootScanner {
 	m := new(RootScanner)
-	m.nearestGcRoot = make(map[uint64]uint64)
-	m.gcRootDistance = make(map[uint64]int)
+	m.parents = make(map[uint64]map[uint64]bool)
 	m.logger = logger
 	return m
 }
@@ -26,12 +24,12 @@ func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) {
 	seen := NewSeen()
 	for _, rootObjectId := range rootObjectIds {
 		r.logger.Debug("rootObjectId=%v", rootObjectId)
-		r.scan(rootObjectId, 0, rootObjectId, a, seen)
+		r.scan(rootObjectId, a, seen)
 	}
-	r.logger.Debug("--- /ScanRoot --- %v %v", len(r.nearestGcRoot), len(r.gcRootDistance))
+	r.logger.Debug("--- /ScanRoot --- %v %v")
 }
 
-func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
+func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 	if objectId == 0 {
 		return // NULL
 	}
@@ -43,8 +41,6 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	defer a.logger.Dedent()
 
 	seen.Add(objectId)
-
-	r.RegisterRoot(rootObjectId, objectId, distance)
 
 	instanceDump := a.objectId2instanceDump[objectId]
 	if instanceDump != nil {
@@ -61,8 +57,9 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 					r.logger.Trace("instance field = %v.%v", instanceDump.ObjectId,
 						a.nameId2string[instanceField.NameId])
 					objectIdBytes := values[idx : idx+8]
-					objectId := binary.BigEndian.Uint64(objectIdBytes)
-					r.scan(rootObjectId, distance+1, objectId, a, seen)
+					childObjectId := binary.BigEndian.Uint64(objectIdBytes)
+					r.RegisterParent(objectId, childObjectId)
+					r.scan(childObjectId, a, seen)
 					idx += 8
 				} else {
 					idx += parser.ValueSize[instanceField.Type]
@@ -84,8 +81,9 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 		idx := 0
 		for _, field := range classDump.StaticFields {
 			if field.Type == hprofdata.HProfValueType_OBJECT {
-				v := field.GetValue()
-				r.scan(rootObjectId, distance+1, v, a, seen)
+				childObjectId := field.GetValue()
+				r.RegisterParent(objectId, childObjectId)
+				r.scan(childObjectId, a, seen)
 				idx += 8
 			} else {
 				idx += parser.ValueSize[field.Type]
@@ -95,7 +93,8 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 		// scan super class
 		super := a.classObjectId2classDump[classDump.SuperClassObjectId]
 		if super != nil {
-			r.scan(rootObjectId, distance+1, super.ClassObjectId, a, seen)
+			r.RegisterParent(objectId, super.ClassObjectId)
+			r.scan(super.ClassObjectId, a, seen)
 		}
 		return
 	}
@@ -104,8 +103,9 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
 		r.logger.Debug("object array = %v", objectId)
-		for _, objectId := range objectArrayDump.ElementObjectIds {
-			r.scan(rootObjectId, distance+1, objectId, a, seen)
+		for _, childObjectId := range objectArrayDump.ElementObjectIds {
+			r.RegisterParent(objectId, childObjectId)
+			r.scan(childObjectId, a, seen)
 		}
 		return
 	}
@@ -125,27 +125,30 @@ func (r RootScanner) scan(rootObjectId uint64, distance int, objectId uint64, a 
 		a.classObjectId2classDump[objectId])
 }
 
-func (r RootScanner) RegisterRoot(rootObjectId uint64, targetObjectId uint64, distance int) {
-	if currentDistance, ok := r.gcRootDistance[targetObjectId]; !ok {
-		r.logger.Trace("RegisterRoot: rootObjectId=%v targetObjectId=%v distance=%v currentDistance=%v",
-			rootObjectId, targetObjectId, distance, currentDistance)
-		r.setRegisterRoot(rootObjectId, targetObjectId, distance)
-	} else {
-		r.logger.Trace("RegisterRoot: rootObjectId=%v targetObjectId=%v distance=%v currentDistance=%v",
-			rootObjectId, targetObjectId, distance, currentDistance)
-		if currentDistance > distance {
-			r.setRegisterRoot(rootObjectId, targetObjectId, distance)
-		}
+func (r RootScanner) RegisterParent(parentObjectId uint64, childObjectId uint64) {
+	if _, ok := r.parents[childObjectId]; !ok {
+		r.parents[childObjectId] = make(map[uint64]bool)
 	}
+	r.logger.Trace("RegisterParent: parentObjectId=%v childObjectId=%v distance=%v currentDistance=%v",
+		parentObjectId, childObjectId)
+	r.parents[childObjectId][parentObjectId] = true
 }
 
-func (r RootScanner) setRegisterRoot(rootObjectId uint64, targetObjectId uint64, distance int) {
-	r.gcRootDistance[targetObjectId] = distance
-	r.nearestGcRoot[targetObjectId] = rootObjectId
-}
-
-func (r RootScanner) GetNearestGcRoot(objectId uint64) uint64 {
-	return r.nearestGcRoot[objectId]
+/**
+Returns true if the `objectId` is referenced from only the parent object.
+*/
+func (r RootScanner) IsRetained(parentObjectId uint64, childObjectId uint64) bool {
+	parentObjectIds, ok := r.parents[childObjectId]
+	if !ok {
+		return false
+	}
+	if len(parentObjectIds) > 1 {
+		return false
+	}
+	for key := range parentObjectIds {
+		return key == parentObjectId
+	}
+	panic("SHOULD NOT REACH HERE")
 }
 
 func (r RootScanner) ScanAll(analyzer *HeapDumpAnalyzer) {

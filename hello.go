@@ -287,23 +287,22 @@ func (a HeapDumpAnalyzer) ShowTotalClasses() {
 }
 
 func (a HeapDumpAnalyzer) GetRetainedSize(objectId uint64, rootScanner *RootScanner) uint64 {
-	rootObjectId := rootScanner.GetNearestGcRoot(objectId)
 	seen := NewSeen()
-	return a.retainedSizeInstance(rootObjectId, objectId, seen, rootScanner)
+	return a.retainedSizeInstance(objectId, seen, rootScanner)
 }
 
-func (a HeapDumpAnalyzer) getSizeCache(rootObjectId uint64, objectId uint64) (uint64, bool) {
-	key := fmt.Sprintf("%v%v", rootObjectId, objectId)
+func (a HeapDumpAnalyzer) getSizeCache(objectId uint64) (uint64, bool) {
+	key := fmt.Sprintf("%v", objectId)
 	size, ok := a.sizeCache[key]
 	return size, ok
 }
 
-func (a HeapDumpAnalyzer) setSizeCache(rootObjectId uint64, objectId uint64, size uint64) {
-	key := fmt.Sprintf("%v%v", rootObjectId, objectId)
+func (a HeapDumpAnalyzer) setSizeCache(objectId uint64, size uint64) {
+	key := fmt.Sprintf("%v", objectId)
 	a.sizeCache[key] = size
 }
 
-func (a HeapDumpAnalyzer) retainedSizeInstance(rootObjectId uint64, objectId uint64, seen *Seen, rootScanner *RootScanner) uint64 {
+func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen, rootScanner *RootScanner) uint64 {
 	if seen == nil {
 		panic("Missing seen")
 	}
@@ -312,7 +311,7 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(rootObjectId uint64, objectId uin
 		return 0
 	}
 
-	if size, ok := a.getSizeCache(rootObjectId, objectId); ok {
+	if size, ok := a.getSizeCache(objectId); ok {
 		return size
 	}
 
@@ -342,7 +341,7 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(rootObjectId uint64, objectId uin
 			name,
 			objectId,
 			seen.Size())
-		return a.calcObjectSize(instanceDump, objectId, seen, rootObjectId, rootScanner)
+		return a.calcObjectSize(instanceDump, objectId, seen, rootScanner)
 	}
 
 	a.logger.Debug("retainedSizeInstance() objectId=%d seen=%v",
@@ -351,7 +350,7 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(rootObjectId uint64, objectId uin
 
 	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
-		return a.calcObjectArraySize(objectArrayDump, seen, rootObjectId, rootScanner)
+		return a.calcObjectArraySize(objectArrayDump, seen, rootScanner)
 	}
 
 	primitiveArrayDump := a.arrayObjectId2primitiveArrayDump[objectId]
@@ -379,7 +378,6 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 	instanceDump *hprofdata.HProfInstanceDump,
 	objectId uint64,
 	seen *Seen,
-	rootObjectId uint64,
 	rootScanner *RootScanner) uint64 {
 	classDump := a.classObjectId2classDump[instanceDump.ClassObjectId]
 	classNameId := a.classObjectId2classNameId[classDump.ClassObjectId]
@@ -401,7 +399,7 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 		a.logger.Trace("scan instance: name=%v",
 			name)
 
-		nIdx, nSize := a.scanInstance(classDump.InstanceFields, values, seen, name, rootObjectId, rootScanner)
+		nIdx, nSize := a.scanInstance(classDump.InstanceFields, values, seen, name, objectId, rootScanner)
 		size += nSize
 		a.logger.Trace("nSize=%v (%v)", nSize,
 			a.nameId2string[a.classObjectId2classNameId[classDump.ClassObjectId]])
@@ -420,7 +418,7 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 		objectId,
 		size, seen)
 
-	a.setSizeCache(rootObjectId, objectId, size)
+	a.setSizeCache(objectId, size)
 	return size
 }
 
@@ -429,7 +427,7 @@ func (a HeapDumpAnalyzer) scanInstance(
 	values []byte,
 	seen *Seen,
 	className string,
-	rootObjectId uint64,
+	parentObjectId uint64,
 	rootScanner *RootScanner) (int, uint64) {
 
 	size := uint64(0)
@@ -440,8 +438,8 @@ func (a HeapDumpAnalyzer) scanInstance(
 		if field.Type == hprofdata.HProfValueType_OBJECT {
 			// TODO 32bit support(特にやる気なし)
 			objectIdBytes := values[idx : idx+8]
-			objectId := binary.BigEndian.Uint64(objectIdBytes)
-			if objectId == 0 {
+			childObjectId := binary.BigEndian.Uint64(objectIdBytes)
+			if childObjectId == 0 {
 				// the field contains null
 				a.logger.Trace("object field: className=%v name=%v oid=NULL",
 					className,
@@ -450,19 +448,19 @@ func (a HeapDumpAnalyzer) scanInstance(
 				a.logger.Trace("start:: object field: className=%v name=%v oid=%v",
 					className,
 					a.nameId2string[nameId],
-					objectId)
-				n := a.retainedSizeInstance(rootObjectId, objectId, seen, rootScanner)
-				if rootScanner.GetNearestGcRoot(objectId) == rootObjectId {
+					childObjectId)
+				n := a.retainedSizeInstance(childObjectId, seen, rootScanner)
+				if rootScanner.IsRetained(parentObjectId, childObjectId) {
 					a.logger.Trace("finished:: object field: className=%v name=%v oid=%v, size=%v",
 						className,
 						a.nameId2string[nameId],
-						objectId, n)
+						childObjectId, n)
 					size += n
 				} else {
 					a.logger.Trace("IGNORE!!:: object field: className=%v name=%v oid=%v size=%v",
 						className,
 						a.nameId2string[nameId],
-						objectId, n)
+						childObjectId, n)
 				}
 			}
 			idx += 8
@@ -473,70 +471,6 @@ func (a HeapDumpAnalyzer) scanInstance(
 	}
 
 	return idx, size
-}
-
-func (a HeapDumpAnalyzer) scanStaticFields(
-	fields []*hprofdata.HProfClassDump_StaticField,
-	seen *Seen,
-	rootObjectId uint64,
-	rootScanner *RootScanner) uint64 {
-	size := uint64(0)
-	for _, field := range fields {
-		switch field.GetType() {
-		case hprofdata.HProfValueType_OBJECT:
-			// TODO 32bit support(特にやる気なし)
-			objectId := field.GetValue()
-			log.Printf("[TRACE]  object field: name=%v oid=%v",
-				a.nameId2string[field.GetNameId()],
-				objectId)
-			if objectId == 0 {
-				// the field contains null
-			} else {
-				size += a.retainedSizeInstance(rootObjectId, objectId, seen, rootScanner)
-			}
-			size += 8
-		// Boolean. Takes 0 or 1. One byte.
-		case hprofdata.HProfValueType_BOOLEAN:
-			log.Printf("[TRACE]  Boolean Field: %v", a.nameId2string[field.GetNameId()])
-			size += 1
-		// Character. Two bytes.
-		case hprofdata.HProfValueType_CHAR:
-			log.Printf("[TRACE]  char Field: %v", a.nameId2string[field.GetNameId()])
-			size += 2
-		// Float. 4 bytes
-		case hprofdata.HProfValueType_FLOAT:
-			log.Printf("[TRACE]  float Field: %v", a.nameId2string[field.GetNameId()])
-			size += 4
-		// Double. 8 bytes.
-		case hprofdata.HProfValueType_DOUBLE:
-			log.Printf("[TRACE]  double Field: %v", a.nameId2string[field.GetNameId()])
-			size += 8
-		// Byte. One byte.
-		case hprofdata.HProfValueType_BYTE:
-			log.Printf("[TRACE]  byte Field: %v", a.nameId2string[field.GetNameId()])
-			size += 1
-		// Short. Two bytes.
-		case hprofdata.HProfValueType_SHORT:
-			log.Printf("[TRACE]  short Field: %v %v",
-				a.nameId2string[field.GetNameId()],
-				int16(field.GetValue()))
-			size += 2
-		// Integer. 4 bytes.
-		case hprofdata.HProfValueType_INT:
-			log.Printf("[TRACE]  int Field: %v, %v",
-				a.nameId2string[field.GetNameId()],
-				int32(field.GetValue()))
-			size += 4
-		// Long. 8 bytes.
-		case hprofdata.HProfValueType_LONG:
-			log.Printf("[TRACE]  long Field: %v",
-				a.nameId2string[field.GetNameId()])
-			size += 8
-		default:
-			log.Fatalf("Unknown value type: %x", field.GetType())
-		}
-	}
-	return size
 }
 
 func (a HeapDumpAnalyzer) CalculateSizeOfInstancesByName(targetName string, rootScanner *RootScanner) map[uint64]uint64 {
@@ -572,7 +506,7 @@ func (a HeapDumpAnalyzer) CalculateSizeOfInstancesByName(targetName string, root
 	return retval
 }
 
-func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDump, seen *Seen, rootObjectId uint64,
+func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDump, seen *Seen,
 	rootScanner *RootScanner) uint64 {
 	a.logger.Debug("--- calcObjectArraySize")
 
@@ -583,11 +517,13 @@ func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDu
 	var sizeResult []uint64
 	for _, objectId := range objectIds {
 		if objectId != 0 {
-			s := a.retainedSizeInstance(rootObjectId, objectId, seen, rootScanner)
+			s := a.retainedSizeInstance(objectId, seen, rootScanner)
 			if a.debug {
 				sizeResult = append(sizeResult, s)
 			}
-			r += s
+			if rootScanner.IsRetained(dump.ArrayObjectId, objectId) {
+				r += s
+			}
 		}
 	}
 	a.logger.Debug("object array: %v len=%v size=%v sizeResult=%v",
@@ -613,6 +549,7 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 	log.Printf("[DEBUG]      class: %v",
 		dump.ClassObjectId)
 	//return a.scanStaticFields(dump.GetStaticFields(), seen)
+	// TODO static fields
 	return 0
 }
 
@@ -681,7 +618,8 @@ func main() {
 	}
 
 	if targetClassName != nil && len(*targetClassName) > 0 {
-		analyzer.CalculateSizeOfInstancesByName(*targetClassName, rootScanner)
+		size := analyzer.CalculateSizeOfInstancesByName(*targetClassName, rootScanner)
+		analyzer.logger.Info("Scan result: %v=%v", *targetClassName, size)
 	} else {
 		analyzer.DumpInclusiveRanking(rootScanner)
 	}

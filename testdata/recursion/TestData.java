@@ -1,20 +1,20 @@
 import java.lang.ProcessHandle;
 import java.io.File;
 
-class Recursion1 {
-    Recursion2 r2;
+class Object1 {
+    Object2 o2;
 }
 
-class Recursion2 {
-    Recursion1 r1;
+class Object2 {
+    Object1 o1;
 }
 
 public class TestData {
-    private static Recursion1 r1 = new Recursion1();
+    private static Object1 o1 = new Object1();
 
     public static void main(String[] args) throws Exception {
-        r1.r2 = new Recursion2();
-        r1.r2.r1 = r1;
+        o1.o2 = new Object2();
+        o1.o2.o1 = o1;
 
         String dumpFileName = args[0];
         if (new File(dumpFileName).delete()) {

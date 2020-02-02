@@ -43,3 +43,14 @@ https://github.com/openjdk/jdk/blob/6be7841937944364d365b33a795e7aa89dac2c58/src
 https://github.com/oracle/visualvm
 https://github.com/bpupadhyaya/openjdk-8/tree/master/jdk/src/share/classes/com/sun/tools/hat
 https://openjdk.java.net/jeps/241
+
+    In MAT we followed the Lengauer & Tarjan algorithm
+    https://www.eclipse.org/forums/index.php/t/531857/
+
+https://medium.com/@chrishantha/basic-concepts-of-java-heap-dump-analysis-with-mat-e3615fd79eb
+
+## What's Retained heap
+
+ * https://help.eclipse.org/2019-12/index.jsp?topic=%2Forg.eclipse.mat.ui.help%2Fconcepts%2Fshallowretainedheap.html
+ * https://www.ibm.com/support/knowledgecenter/ja/SS3KLZ/com.ibm.java.diagnostics.memory.analyzer.doc/shallowretainedheap.html
+ * https://www.ibm.com/support/knowledgecenter/SS3KLZ/com.ibm.java.diagnostics.memory.analyzer.doc/shallowretainedheap.html

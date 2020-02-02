@@ -111,9 +111,8 @@ func TestObject(t *testing.T) {
 }
 
 func TestRecursion(t *testing.T) {
-	// Recursion2 は visualvm だと 24 bytes として計算される。なぜか。
-	testInstanceSize(t, "testdata/recursion/heapdump.hprof", "Recursion2", 48)
-	testInstanceSize(t, "testdata/recursion/heapdump.hprof", "Recursion1", 48)
+	testInstanceSize(t, "testdata/recursion/heapdump.hprof", "Object2", 24)
+	testInstanceSize(t, "testdata/recursion/heapdump.hprof", "Object1", 48)
 }
 
 func TestArray(t *testing.T) {
