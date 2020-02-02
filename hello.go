@@ -38,7 +38,7 @@ type HeapDumpAnalyzer struct {
 	rootMonitorUsed                  map[uint64]bool
 }
 
-func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
+func NewHeapDumpAnalyzer(logger *Logger, debug bool) *HeapDumpAnalyzer {
 	m := new(HeapDumpAnalyzer)
 	m.nameId2string = make(map[uint64]string)
 	m.classObjectId2classNameId = make(map[uint64]uint64)
@@ -47,7 +47,7 @@ func NewHeapDumpAnalyzer(debug bool) *HeapDumpAnalyzer {
 	m.arrayObjectId2primitiveArrayDump = make(map[uint64]*hprofdata.HProfPrimitiveArrayDump)
 	m.arrayObjectId2objectArrayDump = make(map[uint64]*hprofdata.HProfObjectArrayDump)
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
-	m.logger = NewLogger()
+	m.logger = logger
 	m.debug = debug
 	m.sizeCache = make(map[string]uint64)
 	m.isRoot = make(map[uint64]bool)
@@ -602,15 +602,17 @@ func main() {
 		log.Fatal(err)
 	}
 
+	logger := NewLogger()
+
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
-	analyzer := NewHeapDumpAnalyzer(true)
+	analyzer := NewHeapDumpAnalyzer(logger, true)
 	err = analyzer.Scan(heapFilePath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	rootScanner := NewRootScanner(analyzer.logger)
+	rootScanner := NewRootScanner(logger)
 	rootScanner.ScanAll(analyzer)
 
 	if *rootScanOnly {
