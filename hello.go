@@ -10,11 +10,14 @@ import (
 	"log"
 	"os"
 	"sort"
-	"strings"
 )
 
 type HeapDumpAnalyzer struct {
-	nameId2string                    map[uint64]string
+	logger *Logger
+	debug  bool
+
+	nameId2string map[uint64]string
+
 	classObjectId2classNameId        map[uint64]uint64
 	classObjectId2objectIds          map[uint64][]uint64
 	classObjectId2classDump          map[uint64]*hprofdata.HProfClassDump
@@ -22,29 +25,32 @@ type HeapDumpAnalyzer struct {
 	arrayObjectId2objectArrayDump    map[uint64]*hprofdata.HProfObjectArrayDump
 	countClassDump                   uint64 // Total Classes
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
-	logger                           *Logger
-	debug                            bool
-	sizeCache                        map[string]uint64
 
-	rootJniGlobals                   map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
-	rootJniLocal                     map[uint64]bool
-	rootJavaFrame                    map[uint64]bool
-	rootStickyClass                  map[uint64]bool
-	rootThreadObj                    map[uint64]bool
-	rootMonitorUsed                  map[uint64]bool
+	sizeCache map[string]uint64
+
+	rootJniGlobals  map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
+	rootJniLocal    map[uint64]bool
+	rootJavaFrame   map[uint64]bool
+	rootStickyClass map[uint64]bool
+	rootThreadObj   map[uint64]bool
+	rootMonitorUsed map[uint64]bool
 }
 
 func NewHeapDumpAnalyzer(logger *Logger, debug bool) *HeapDumpAnalyzer {
 	m := new(HeapDumpAnalyzer)
+
+	m.logger = logger
+	m.debug = debug
+
 	m.nameId2string = make(map[uint64]string)
+
 	m.classObjectId2classNameId = make(map[uint64]uint64)
 	m.classObjectId2objectIds = make(map[uint64][]uint64)
 	m.classObjectId2classDump = make(map[uint64]*hprofdata.HProfClassDump)
 	m.arrayObjectId2primitiveArrayDump = make(map[uint64]*hprofdata.HProfPrimitiveArrayDump)
 	m.arrayObjectId2objectArrayDump = make(map[uint64]*hprofdata.HProfObjectArrayDump)
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
-	m.logger = logger
-	m.debug = debug
+
 	m.sizeCache = make(map[string]uint64)
 
 	m.rootJniGlobals = make(map[uint64]bool)
@@ -176,11 +182,6 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 		objectIds := a.classObjectId2objectIds[classObjectId]
 		classNameId := a.classObjectId2classNameId[classObjectId]
 		name := a.nameId2string[classNameId]
-
-		if strings.HasPrefix(name, "jdk/internal/") {
-			a.logger.Debug("Skip internal class: %v", name)
-			continue
-		}
 
 		for _, objectId := range objectIds {
 			a.logger.Info("Starting scan %v(classObjectId=%v, objectId=%v)\n",
@@ -322,16 +323,6 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen, root
 	instanceDump := a.objectId2instanceDump[objectId]
 	if instanceDump != nil {
 		name := a.nameId2string[a.classObjectId2classNameId[instanceDump.ClassObjectId]]
-		// XXX why??
-		if name == "java/lang/String" {
-			// String is a special class.
-			return 0
-		}
-		// XXX why??
-		if name == "java/lang/Module" {
-			// String is a special class.
-			return 0
-		}
 
 		a.logger.Debug("retainedSizeInstance(%v) objectId=%d seen=%v",
 			name,
