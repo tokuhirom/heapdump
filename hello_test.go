@@ -1,9 +1,6 @@
 package main
 
 import (
-	"github.com/hashicorp/logutils"
-	"log"
-	"os"
 	"testing"
 )
 
@@ -15,18 +12,11 @@ type Tester struct {
 func NewTester(path string, t *testing.T) *Tester {
 	m := new(Tester)
 	m.t = t
-	m.analyzer = NewHeapDumpAnalyzer(NewLogger(), false)
+	m.analyzer = NewHeapDumpAnalyzer(NewLogger(LogLevel_INFO), false)
 	err := m.analyzer.Scan(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	filter := &logutils.LevelFilter{
-		Levels:   []logutils.LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
-		MinLevel: logutils.LogLevel("INFO"),
-		Writer:   os.Stdout,
-	}
-	log.SetOutput(filter)
 
 	return m
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"github.com/hashicorp/logutils"
 	"github.com/inhies/go-bytesize"
 	"log"
 	"os"
@@ -26,20 +25,13 @@ func main() {
 
 	heapFilePath := args[0]
 
-	minLevel := "INFO"
+	minLevel := LogLevel_INFO
 	if *verbose {
-		minLevel = "DEBUG"
+		minLevel = LogLevel_DEBUG
 	}
 	if *veryVerbose {
-		minLevel = "TRACE"
+		minLevel = LogLevel_TRACE
 	}
-
-	filter := &logutils.LevelFilter{
-		Levels:   []logutils.LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
-		MinLevel: logutils.LogLevel(minLevel),
-		Writer:   os.Stdout,
-	}
-	log.SetOutput(filter)
 
 	rlimitInt, err := bytesize.Parse(*rlimitString)
 	if err != nil {
@@ -58,7 +50,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logger := NewLogger()
+	logger := NewLogger(minLevel)
 
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
