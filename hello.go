@@ -25,7 +25,7 @@ type HeapDumpAnalyzer struct {
 	logger                           *Logger
 	debug                            bool
 	sizeCache                        map[string]uint64
-	isRoot                           map[uint64]bool
+
 	rootJniGlobals                   map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
 	rootJniLocal                     map[uint64]bool
 	rootJavaFrame                    map[uint64]bool
@@ -46,7 +46,7 @@ func NewHeapDumpAnalyzer(logger *Logger, debug bool) *HeapDumpAnalyzer {
 	m.logger = logger
 	m.debug = debug
 	m.sizeCache = make(map[string]uint64)
-	m.isRoot = make(map[uint64]bool)
+
 	m.rootJniGlobals = make(map[uint64]bool)
 	m.rootJniLocal = make(map[uint64]bool)
 	m.rootJavaFrame = make(map[uint64]bool)
