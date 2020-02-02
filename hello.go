@@ -205,7 +205,7 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 	for _, classObjectId := range classObjectIds {
 		classNameId := a.classObjectId2classNameId[classObjectId]
 		name := a.nameId2string[classNameId]
-		log.Printf(p.Sprintf("[INFO] softSize=%10d strongSize=%10d(count=%5d)= %s\n",
+		log.Printf(p.Sprintf("[INFO] shallowSize=%10d retainedSize=%10d(count=%5d)= %s\n",
 			a.calcSoftSizeByClassObjectId(classObjectId),
 			classObjectId2objectSize[classObjectId],
 			classObjectId2objectCount[classObjectId],
