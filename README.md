@@ -26,11 +26,7 @@ Heapdump analyzer based on [google/hprof-parser](https://github.com/google/hprof
 
 TODO:
 
-* いろんな種類のオブジェクトで、ちゃんとした値が算出されるようにする
 * HTML Report
-* String の挙動確認
-* hashmap の容量の計算がうまくいってない
-* logger にインデントの概念を導入する
 
 https://gist.github.com/arturmkrtchyan/43d6135e8a15798cc46c
 
