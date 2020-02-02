@@ -27,6 +27,7 @@ Heapdump analyzer based on [google/hprof-parser](https://github.com/google/hprof
 TODO:
 
 * HTML Report
+* show array report.
 
 https://gist.github.com/arturmkrtchyan/43d6135e8a15798cc46c
 

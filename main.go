@@ -68,7 +68,7 @@ func main() {
 	}
 
 	if targetClassName != nil && len(*targetClassName) > 0 {
-		size := analyzer.CalculateSizeOfInstancesByName(*targetClassName, rootScanner)
+		size := analyzer.CalculateRetainedSizeOfInstancesByName(*targetClassName, rootScanner)
 		analyzer.logger.Info("Scan result: %v=%v", *targetClassName, size)
 	} else {
 		analyzer.DumpInclusiveRanking(rootScanner)

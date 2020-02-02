@@ -437,37 +437,23 @@ func (a HeapDumpAnalyzer) scanInstance(
 	return idx, size
 }
 
-func (a HeapDumpAnalyzer) CalculateSizeOfInstancesByName(targetName string, rootScanner *RootScanner) map[uint64]uint64 {
-	// Debugging
-	retval := make(map[uint64]uint64)
+func (a HeapDumpAnalyzer) CalculateRetainedSizeOfInstancesByName(targetName string, rootScanner *RootScanner) map[uint64]uint64 {
+	objectID2size := make(map[uint64]uint64)
+
 	for classObjectId, objectIds := range a.classObjectId2objectIds {
 		name := a.nameId2string[a.classObjectId2classNameId[classObjectId]]
 		if name == targetName {
 			for _, objectId := range objectIds {
-				a.logger.Debug("**** Scanning %v", targetName)
+				a.logger.Debug("**** Scanning %v objectId=%v", targetName, objectId)
 				size := a.GetRetainedSize(objectId, rootScanner)
-				retval[objectId] = size
+				objectID2size[objectId] = size
 				a.logger.Debug("**** Scanned %v\n\n", size)
 			}
 			break
 		}
 	}
 
-	if a.debug {
-		totalSize := uint64(0)
-		var sizeList []uint64
-		for _, size := range retval {
-			totalSize += size
-			sizeList = append(sizeList, size)
-		}
-		sort.Slice(sizeList, func(i, j int) bool {
-			return sizeList[i] > sizeList[j]
-		})
-		a.logger.Debug("--- scanning total report totalSize=%v len=%v %v\n\n",
-			totalSize, len(sizeList), sizeList)
-	}
-
-	return retval
+	return objectID2size
 }
 
 func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDump, seen *Seen,
