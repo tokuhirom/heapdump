@@ -356,7 +356,7 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen, root
 
 	classDump := a.classObjectId2classDump[objectId]
 	if classDump != nil {
-		return a.calcClassSize(classDump, seen)
+		return a.calcClassSize(classDump, seen, rootScanner)
 	}
 
 	log.Fatalf(
@@ -541,10 +541,24 @@ func (a HeapDumpAnalyzer) calcPrimitiveArraySize(dump *hprofdata.HProfPrimitiveA
 	return retval
 }
 
-func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Seen) uint64 {
+func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Seen, rootScanner *RootScanner) uint64 {
 	log.Printf("[DEBUG]      class: %v",
 		dump.ClassObjectId)
-	//return a.scanStaticFields(dump.GetStaticFields(), seen)
-	// TODO static fields
-	return 0
+
+	totalSize := uint64(0)
+	for _, field := range dump.StaticFields {
+		if field.Type == hprofdata.HProfValueType_OBJECT {
+			childObjectId := field.Value
+			totalSize += 8
+			if childObjectId != 0 {
+				size := a.retainedSizeInstance(childObjectId, seen, rootScanner)
+				if rootScanner.IsRetained(dump.ClassObjectId, childObjectId) {
+					totalSize += size
+				}
+			}
+		} else {
+			totalSize += uint64(parser.ValueSize[field.Type])
+		}
+	}
+	return totalSize
 }
