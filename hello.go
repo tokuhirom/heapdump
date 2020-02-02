@@ -23,7 +23,6 @@ type HeapDumpAnalyzer struct {
 	classObjectId2classDump          map[uint64]*hprofdata.HProfClassDump
 	arrayObjectId2primitiveArrayDump map[uint64]*hprofdata.HProfPrimitiveArrayDump
 	arrayObjectId2objectArrayDump    map[uint64]*hprofdata.HProfObjectArrayDump
-	countClassDump                   uint64 // Total Classes
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
 
 	sizeCache map[string]uint64
@@ -124,7 +123,6 @@ func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
 			//className := nameId2string[classNameId]
 			//log.Printf("className=%s", className)
 			a.classObjectId2classDump[o.ClassObjectId] = o
-			a.countClassDump += 1
 		case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
 			a.classObjectId2objectIds[o.ClassObjectId] = append(a.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
 			a.objectId2instanceDump[o.ObjectId] = o
@@ -260,10 +258,6 @@ func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
 		a.objectId2instanceDump[objectId],
 		a.classObjectId2classDump[objectId])
 	return -1 // should not reach here
-}
-
-func (a HeapDumpAnalyzer) ShowTotalClasses() {
-	log.Printf("Total Classes=%v", a.countClassDump)
 }
 
 func (a HeapDumpAnalyzer) GetRetainedSize(objectId uint64, rootScanner *RootScanner) uint64 {
