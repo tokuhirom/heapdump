@@ -262,23 +262,6 @@ func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
 	return -1 // should not reach here
 }
 
-func (a HeapDumpAnalyzer) DumpExclusiveRanking() {
-	var classObjectIds []uint64
-	for k := range a.classObjectId2objectIds {
-		classObjectIds = append(classObjectIds, k)
-	}
-	sort.Slice(classObjectIds, func(i, j int) bool {
-		return len(a.classObjectId2objectIds[classObjectIds[i]]) < len(a.classObjectId2objectIds[classObjectIds[j]])
-	})
-	for _, classObjectId := range classObjectIds {
-		classNameId := a.classObjectId2classNameId[classObjectId]
-		name := a.nameId2string[classNameId]
-		log.Printf("[INFO] %d\t= %s\n",
-			len(a.classObjectId2objectIds[classObjectId]),
-			name)
-	}
-}
-
 func (a HeapDumpAnalyzer) ShowTotalClasses() {
 	log.Printf("Total Classes=%v", a.countClassDump)
 }
