@@ -1,5 +1,7 @@
 # heapdump
 
+Heapdump analyzer based on [google/hprof-parser](https://github.com/google/hprof-parser).
+
 ## Goal
 
  1. Generate retained size based class histogram from hprof(heapdump file)
