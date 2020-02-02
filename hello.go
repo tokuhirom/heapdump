@@ -7,6 +7,7 @@ import (
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"github.com/hashicorp/logutils"
+	"github.com/inhies/go-bytesize"
 	"golang.org/x/text/message"
 	"io"
 	"log"
@@ -622,6 +623,7 @@ func main() {
 	veryVerbose := flag.Bool("vv", false, "Very Verbose")
 	rootScanOnly := flag.Bool("root", false, "root scan only")
 	targetClassName := flag.String("target", "", "Target class name")
+	rlimitString := flag.String("rlimit", "4GB", "RLimit")
 
 	flag.Parse()
 	args := flag.Args()
@@ -646,14 +648,18 @@ func main() {
 	}
 	log.SetOutput(filter)
 
+	rlimitInt, err := bytesize.Parse(*rlimitString)
+	if err != nil {
+		log.Fatal(err)
+	}
 	var rLimit syscall.Rlimit
-	err := syscall.Getrlimit(syscall.RLIMIT_AS, &rLimit)
+	err = syscall.Getrlimit(syscall.RLIMIT_AS, &rLimit)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// TODO 調整可能なように
-	rLimit.Cur = 4 * 1000_000_000
-	rLimit.Max = 4 * 1000_000_000
+	rLimit.Cur = uint64(rlimitInt)
+	rLimit.Max = uint64(rlimitInt)
 	err = syscall.Setrlimit(syscall.RLIMIT_AS, &rLimit)
 	if err != nil {
 		log.Fatal(err)
