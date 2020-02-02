@@ -419,18 +419,18 @@ func (a HeapDumpAnalyzer) scanInstance(
 					className,
 					a.nameId2string[nameId],
 					childObjectId)
-				n := a.retainedSizeInstance(childObjectId, seen, rootScanner)
 				if rootScanner.IsRetained(parentObjectId, childObjectId) {
+					n := a.retainedSizeInstance(childObjectId, seen, rootScanner)
 					a.logger.Trace("finished:: object field: className=%v name=%v oid=%v, size=%v",
 						className,
 						a.nameId2string[nameId],
 						childObjectId, n)
 					size += n
 				} else {
-					a.logger.Trace("IGNORE!!:: object field: className=%v name=%v oid=%v size=%v",
+					a.logger.Trace("IGNORE!!:: object field: className=%v name=%v oid=%v",
 						className,
 						a.nameId2string[nameId],
-						childObjectId, n)
+						childObjectId)
 				}
 			}
 			idx += 8
@@ -487,11 +487,11 @@ func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDu
 	var sizeResult []uint64
 	for _, objectId := range objectIds {
 		if objectId != 0 {
-			s := a.retainedSizeInstance(objectId, seen, rootScanner)
-			if a.debug {
-				sizeResult = append(sizeResult, s)
-			}
 			if rootScanner.IsRetained(dump.ArrayObjectId, objectId) {
+				s := a.retainedSizeInstance(objectId, seen, rootScanner)
+				if a.debug {
+					sizeResult = append(sizeResult, s)
+				}
 				r += s
 			}
 		}
@@ -525,8 +525,8 @@ func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Se
 			childObjectId := field.Value
 			totalSize += 8
 			if childObjectId != 0 {
-				size := a.retainedSizeInstance(childObjectId, seen, rootScanner)
 				if rootScanner.IsRetained(dump.ClassObjectId, childObjectId) {
+					size := a.retainedSizeInstance(childObjectId, seen, rootScanner)
 					totalSize += size
 				}
 			}
