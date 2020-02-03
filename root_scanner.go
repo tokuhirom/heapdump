@@ -42,11 +42,11 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 
 	seen.Add(objectId)
 
-	instanceDump := a.objectId2instanceDump[objectId]
+	instanceDump := a.hprof.objectId2instanceDump[objectId]
 	if instanceDump != nil {
 		r.logger.Debug("instance dump = %v", objectId)
 
-		classDump := a.classObjectId2classDump[instanceDump.ClassObjectId]
+		classDump := a.hprof.classObjectId2classDump[instanceDump.ClassObjectId]
 		values := instanceDump.GetValues()
 		idx := 0
 
@@ -55,7 +55,7 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 				if instanceField.Type == hprofdata.HProfValueType_OBJECT {
 					// TODO 32bit support
 					r.logger.Trace("instance field = %v.%v", instanceDump.ObjectId,
-						a.nameId2string[instanceField.NameId])
+						a.hprof.nameId2string[instanceField.NameId])
 					objectIdBytes := values[idx : idx+8]
 					childObjectId := binary.BigEndian.Uint64(objectIdBytes)
 					r.RegisterParent(objectId, childObjectId)
@@ -65,7 +65,7 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 					idx += parser.ValueSize[instanceField.Type]
 				}
 			}
-			classDump = a.classObjectId2classDump[classDump.SuperClassObjectId]
+			classDump = a.hprof.classObjectId2classDump[classDump.SuperClassObjectId]
 			if classDump == nil {
 				break
 			}
@@ -73,7 +73,7 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 		return
 	}
 
-	classDump := a.classObjectId2classDump[objectId]
+	classDump := a.hprof.classObjectId2classDump[objectId]
 	if classDump != nil {
 		// scan super
 		r.logger.Debug("class dump = %v", objectId)
@@ -91,7 +91,7 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 		}
 
 		// scan super class
-		super := a.classObjectId2classDump[classDump.SuperClassObjectId]
+		super := a.hprof.classObjectId2classDump[classDump.SuperClassObjectId]
 		if super != nil {
 			r.RegisterParent(objectId, super.ClassObjectId)
 			r.scan(super.ClassObjectId, a, seen)
@@ -100,7 +100,7 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 	}
 
 	// object array
-	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
+	objectArrayDump := a.hprof.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
 		r.logger.Debug("object array = %v", objectId)
 		for _, childObjectId := range objectArrayDump.ElementObjectIds {
@@ -111,7 +111,7 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 	}
 
 	// primitive array
-	primitiveArrayDump := a.arrayObjectId2primitiveArrayDump[objectId]
+	primitiveArrayDump := a.hprof.arrayObjectId2primitiveArrayDump[objectId]
 	if primitiveArrayDump != nil {
 		r.logger.Debug("primitive array = %v", objectId)
 		return
@@ -119,10 +119,10 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 
 	log.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v cd=%v",
 		objectId,
-		a.arrayObjectId2primitiveArrayDump[objectId],
-		a.arrayObjectId2objectArrayDump[objectId],
-		a.objectId2instanceDump[objectId],
-		a.classObjectId2classDump[objectId])
+		a.hprof.arrayObjectId2primitiveArrayDump[objectId],
+		a.hprof.arrayObjectId2objectArrayDump[objectId],
+		a.hprof.objectId2instanceDump[objectId],
+		a.hprof.classObjectId2classDump[objectId])
 }
 
 func (r RootScanner) RegisterParent(parentObjectId uint64, childObjectId uint64) {
@@ -153,10 +153,10 @@ func (r RootScanner) IsRetained(parentObjectId uint64, childObjectId uint64) boo
 
 func (r RootScanner) ScanAll(analyzer *HeapDumpAnalyzer) {
 	r.logger.Info("Scanning retained root")
-	r.ScanRoot(analyzer, keys(analyzer.rootJniGlobals))
-	r.ScanRoot(analyzer, keys(analyzer.rootJniLocal))
-	r.ScanRoot(analyzer, keys(analyzer.rootJavaFrame))
-	r.ScanRoot(analyzer, keys(analyzer.rootStickyClass))
-	r.ScanRoot(analyzer, keys(analyzer.rootThreadObj))
-	r.ScanRoot(analyzer, keys(analyzer.rootMonitorUsed))
+	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJniGlobals))
+	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJniLocal))
+	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJavaFrame))
+	r.ScanRoot(analyzer, keys(analyzer.hprof.rootStickyClass))
+	r.ScanRoot(analyzer, keys(analyzer.hprof.rootThreadObj))
+	r.ScanRoot(analyzer, keys(analyzer.hprof.rootMonitorUsed))
 }

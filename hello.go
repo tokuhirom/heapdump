@@ -5,165 +5,32 @@ import (
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"golang.org/x/text/message"
-	"io"
 	"log"
-	"os"
 	"sort"
 )
 
 type HeapDumpAnalyzer struct {
 	logger *Logger
-
-	nameId2string map[uint64]string
-
-	classObjectId2classNameId        map[uint64]uint64
-	classObjectId2objectIds          map[uint64][]uint64
-	classObjectId2classDump          map[uint64]*hprofdata.HProfClassDump
-	arrayObjectId2primitiveArrayDump map[uint64]*hprofdata.HProfPrimitiveArrayDump
-	arrayObjectId2objectArrayDump    map[uint64]*hprofdata.HProfObjectArrayDump
-	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
-
+	hprof *HProf
 	sizeCache map[uint64]uint64
-
-	rootJniGlobals  map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
-	rootJniLocal    map[uint64]bool
-	rootJavaFrame   map[uint64]bool
-	rootStickyClass map[uint64]bool
-	rootThreadObj   map[uint64]bool
-	rootMonitorUsed map[uint64]bool
 }
 
 func NewHeapDumpAnalyzer(logger *Logger, debug bool) *HeapDumpAnalyzer {
 	m := new(HeapDumpAnalyzer)
-
 	m.logger = logger
-
-	m.nameId2string = make(map[uint64]string)
-
-	m.classObjectId2classNameId = make(map[uint64]uint64)
-	m.classObjectId2objectIds = make(map[uint64][]uint64)
-	m.classObjectId2classDump = make(map[uint64]*hprofdata.HProfClassDump)
-	m.arrayObjectId2primitiveArrayDump = make(map[uint64]*hprofdata.HProfPrimitiveArrayDump)
-	m.arrayObjectId2objectArrayDump = make(map[uint64]*hprofdata.HProfObjectArrayDump)
-	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
-
 	m.sizeCache = make(map[uint64]uint64)
-
-	m.rootJniGlobals = make(map[uint64]bool)
-	m.rootJniLocal = make(map[uint64]bool)
-	m.rootJavaFrame = make(map[uint64]bool)
-	m.rootStickyClass = make(map[uint64]bool)
-	m.rootThreadObj = make(map[uint64]bool)
-	m.rootMonitorUsed = make(map[uint64]bool)
+	m.hprof = NewHProf(logger)
 	return m
 }
 
-func (a HeapDumpAnalyzer) Scan(heapFilePath string) error {
-	a.logger.Info("Opening %v", heapFilePath)
-
-	f, err := os.Open(heapFilePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	p := parser.NewParser(f)
-	_, err = p.ParseHeader()
-	if err != nil {
-		return nil
-	}
-
-	var prev int64
-	for {
-		record, err := p.ParseRecord()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			a.logger.Warn("Got parsing issue: %v", err)
-			continue
-		}
-		if pos, err := f.Seek(0, 1); err == nil && pos-prev > (1<<30) {
-			a.logger.Info("currently %d GiB", pos/(1<<30))
-			prev = pos
-		}
-
-		//var key uint64
-		switch o := record.(type) {
-		case *hprofdata.HProfRecordUTF8:
-			//log.Printf("%v", o.GetNameId())
-			//log.Printf("%v", o.XXX_Size())
-			a.nameId2string[o.GetNameId()] = string(o.GetName())
-			//key = o.GetNameId()
-		case *hprofdata.HProfRecordLoadClass:
-			/*
-			 *                u4        class serial number (> 0)
-			 *                id        class object ID
-			 *                u4        stack trace serial number
-			 *                id        class name ID
-			 */
-			//key = uint64(o.GetClassSerialNumber())
-			a.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
-			//log.Printf("%v=%v", o.GetClassObjectId(),
-			//	a.nameId2string[o.GetClassNameId()])
-		case *hprofdata.HProfRecordFrame:
-			// stack frame.
-			//key = o.GetStackFrameId()
-		case *hprofdata.HProfRecordTrace:
-			// stack trace
-			//key = uint64(o.GetStackTraceSerialNumber())
-		case *hprofdata.HProfRecordHeapDumpBoundary:
-			break
-		case *hprofdata.HProfClassDump:
-			//key = o.GetClassObjectId()
-			//classNameId := classObjectId2classNameId[o.GetClassObjectId()]
-			//className := nameId2string[classNameId]
-			//log.Printf("className=%s", className)
-			a.classObjectId2classDump[o.ClassObjectId] = o
-		case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
-			a.classObjectId2objectIds[o.ClassObjectId] = append(a.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
-			a.objectId2instanceDump[o.ObjectId] = o
-		case *hprofdata.HProfObjectArrayDump:
-			arrayObjectId := o.GetArrayObjectId()
-			a.arrayObjectId2objectArrayDump[arrayObjectId] = o
-		case *hprofdata.HProfPrimitiveArrayDump:
-			arrayObjectId := o.GetArrayObjectId()
-			a.arrayObjectId2primitiveArrayDump[arrayObjectId] = o
-		case *hprofdata.HProfRootJNIGlobal:
-			//key = cs.countJNIGlobal
-			//cs.countJNIGlobal++
-			//a.rootObjectId[o.GetObjectId()] = true
-			a.logger.Debug("Found JNI Global: %v", o.GetObjectId())
-			a.rootJniGlobals[o.GetObjectId()] = true
-		case *hprofdata.HProfRootJNILocal:
-			//key = cs.countJNILocal
-			//cs.countJNILocal++
-			a.rootJniLocal[o.GetObjectId()] = true
-		case *hprofdata.HProfRootJavaFrame:
-			//key = cs.countJavaFrame
-			//cs.countJavaFrame++
-			a.rootJavaFrame[o.GetObjectId()] = true
-		case *hprofdata.HProfRootStickyClass:
-			//key = cs.countStickyClass
-			//cs.countStickyClass++
-			a.rootStickyClass[o.GetObjectId()] = true
-		case *hprofdata.HProfRootThreadObj:
-			//key = cs.countThreadObj
-			//cs.countThreadObj++
-			a.rootThreadObj[o.GetThreadObjectId()] = true
-		case *hprofdata.HProfRootMonitorUsed:
-			a.rootMonitorUsed[o.GetObjectId()] = true
-		default:
-			log.Printf("unknown record type!!: %#v", record)
-		}
-	}
-	return nil
+func (a HeapDumpAnalyzer) ReadFile(heapFilePath string) error {
+	return a.hprof.ReadFile(heapFilePath)
 }
 
 func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 	log.Printf("[INFO] --- DumpInclusiveRanking")
 	var classObjectIds []uint64
-	for k := range a.classObjectId2objectIds {
+	for k := range a.hprof.classObjectId2objectIds {
 		classObjectIds = append(classObjectIds, k)
 	}
 
@@ -174,9 +41,9 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 	var classObjectId2objectSize = map[uint64]uint64{}
 	classObjectId2objectCount := make(map[uint64]int)
 	for _, classObjectId := range classObjectIds {
-		objectIds := a.classObjectId2objectIds[classObjectId]
-		classNameId := a.classObjectId2classNameId[classObjectId]
-		name := a.nameId2string[classNameId]
+		objectIds := a.hprof.classObjectId2objectIds[classObjectId]
+		classNameId := a.hprof.classObjectId2classNameId[classObjectId]
+		name := a.hprof.nameId2string[classNameId]
 
 		for _, objectId := range objectIds {
 			a.logger.Info("Starting scan %v(classObjectId=%v, objectId=%v)\n",
@@ -199,8 +66,8 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 	// print result
 	p := message.NewPrinter(message.MatchLanguage("en"))
 	for _, classObjectId := range classObjectIds {
-		classNameId := a.classObjectId2classNameId[classObjectId]
-		name := a.nameId2string[classNameId]
+		classNameId := a.hprof.classObjectId2classNameId[classObjectId]
+		name := a.hprof.nameId2string[classNameId]
 		log.Printf(p.Sprintf("[INFO] shallowSize=%10d retainedSize=%10d(count=%5d)= %s\n",
 			a.calcSoftSizeByClassObjectId(classObjectId),
 			classObjectId2objectSize[classObjectId],
@@ -211,19 +78,19 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 
 func (a HeapDumpAnalyzer) calcSoftSizeByClassObjectId(classObjectId uint64) int {
 	size := 0
-	for _, objectId := range a.classObjectId2objectIds[classObjectId] {
+	for _, objectId := range a.hprof.classObjectId2objectIds[classObjectId] {
 		size += a.calcSoftSize(objectId)
 	}
 	return size
 }
 
 func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
-	instanceDump := a.objectId2instanceDump[objectId]
+	instanceDump := a.hprof.objectId2instanceDump[objectId]
 	if instanceDump != nil {
 		return 16 + len(instanceDump.Values)
 	}
 
-	classDump := a.classObjectId2classDump[objectId]
+	classDump := a.hprof.classObjectId2classDump[objectId]
 	if classDump != nil {
 		idx := 0
 		for _, field := range classDump.StaticFields {
@@ -237,23 +104,23 @@ func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
 	}
 
 	// object array
-	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
+	objectArrayDump := a.hprof.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
 		return len(objectArrayDump.ElementObjectIds) * 8
 	}
 
 	// primitive array
-	primitiveArrayDump := a.arrayObjectId2primitiveArrayDump[objectId]
+	primitiveArrayDump := a.hprof.arrayObjectId2primitiveArrayDump[objectId]
 	if primitiveArrayDump != nil {
 		return len(primitiveArrayDump.Values) * parser.ValueSize[primitiveArrayDump.ElementType]
 	}
 
 	log.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v cd=%v",
 		objectId,
-		a.arrayObjectId2primitiveArrayDump[objectId],
-		a.arrayObjectId2objectArrayDump[objectId],
-		a.objectId2instanceDump[objectId],
-		a.classObjectId2classDump[objectId])
+		a.hprof.arrayObjectId2primitiveArrayDump[objectId],
+		a.hprof.arrayObjectId2objectArrayDump[objectId],
+		a.hprof.objectId2instanceDump[objectId],
+		a.hprof.classObjectId2classDump[objectId])
 	return -1 // should not reach here
 }
 
@@ -292,9 +159,9 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen, root
 	a.logger.Indent()
 	defer a.logger.Dedent()
 
-	instanceDump := a.objectId2instanceDump[objectId]
+	instanceDump := a.hprof.objectId2instanceDump[objectId]
 	if instanceDump != nil {
-		name := a.nameId2string[a.classObjectId2classNameId[instanceDump.ClassObjectId]]
+		name := a.hprof.nameId2string[a.hprof.classObjectId2classNameId[instanceDump.ClassObjectId]]
 
 		a.logger.Debug("retainedSizeInstance(%v) objectId=%d seen=%v",
 			name,
@@ -307,17 +174,17 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen, root
 		objectId,
 		seen.Size())
 
-	objectArrayDump := a.arrayObjectId2objectArrayDump[objectId]
+	objectArrayDump := a.hprof.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
 		return a.calcObjectArraySize(objectArrayDump, seen, rootScanner)
 	}
 
-	primitiveArrayDump := a.arrayObjectId2primitiveArrayDump[objectId]
+	primitiveArrayDump := a.hprof.arrayObjectId2primitiveArrayDump[objectId]
 	if primitiveArrayDump != nil {
 		return a.calcPrimitiveArraySize(primitiveArrayDump)
 	}
 
-	classDump := a.classObjectId2classDump[objectId]
+	classDump := a.hprof.classObjectId2classDump[objectId]
 	if classDump != nil {
 		return a.calcClassSize(classDump, seen, rootScanner)
 	}
@@ -326,10 +193,10 @@ func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen, root
 		"[ERROR] Unknown instance: objectId=%v instanceDump=%v str=%v primArray=%v objArray=%v class=%v",
 		objectId,
 		instanceDump,
-		a.nameId2string[objectId],
-		a.arrayObjectId2primitiveArrayDump[objectId],
-		a.arrayObjectId2objectArrayDump[objectId],
-		a.classObjectId2classNameId[objectId])
+		a.hprof.nameId2string[objectId],
+		a.hprof.arrayObjectId2primitiveArrayDump[objectId],
+		a.hprof.arrayObjectId2objectArrayDump[objectId],
+		a.hprof.classObjectId2classNameId[objectId])
 	return 0 // should not reach here
 }
 
@@ -338,10 +205,10 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 	objectId uint64,
 	seen *Seen,
 	rootScanner *RootScanner) uint64 {
-	classDump := a.classObjectId2classDump[instanceDump.ClassObjectId]
-	classNameId := a.classObjectId2classNameId[classDump.ClassObjectId]
+	classDump := a.hprof.classObjectId2classDump[instanceDump.ClassObjectId]
+	classNameId := a.hprof.classObjectId2classNameId[classDump.ClassObjectId]
 	a.logger.Debug("calcObjectSize(name=%v) oid=%d",
-		a.nameId2string[classNameId],
+		a.hprof.nameId2string[classNameId],
 		objectId)
 
 	// instance field を舐めてサイズを計算する。super があればそこも全てみる。
@@ -354,26 +221,26 @@ func (a HeapDumpAnalyzer) calcObjectSize(
 	values := instanceDump.GetValues()
 	// 読み込んだバイト数, サイズ
 	for {
-		name := a.nameId2string[a.classObjectId2classNameId[classDump.ClassObjectId]]
+		name := a.hprof.nameId2string[a.hprof.classObjectId2classNameId[classDump.ClassObjectId]]
 		a.logger.Trace("scan instance: name=%v",
 			name)
 
 		nIdx, nSize := a.scanInstance(classDump.InstanceFields, values, seen, name, objectId, rootScanner)
 		size += nSize
 		a.logger.Trace("nSize=%v (%v)", nSize,
-			a.nameId2string[a.classObjectId2classNameId[classDump.ClassObjectId]])
+			a.hprof.nameId2string[a.hprof.classObjectId2classNameId[classDump.ClassObjectId]])
 		values = values[nIdx:]
 		if classDump.SuperClassObjectId == 0 {
 			break
 		} else {
-			classDump = a.classObjectId2classDump[classDump.SuperClassObjectId]
+			classDump = a.hprof.classObjectId2classDump[classDump.SuperClassObjectId]
 			a.logger.Trace("checking super class %v",
-				a.nameId2string[a.classObjectId2classNameId[classDump.ClassObjectId]])
+				a.hprof.nameId2string[a.hprof.classObjectId2classNameId[classDump.ClassObjectId]])
 		}
 	}
 
 	a.logger.Debug("/calcObjectSize(name=%v) oid=%d size=%v seen=%v",
-		a.nameId2string[classNameId],
+		a.hprof.nameId2string[classNameId],
 		objectId,
 		size, seen)
 
@@ -402,29 +269,29 @@ func (a HeapDumpAnalyzer) scanInstance(
 				// the field contains null
 				a.logger.Trace("object field: className=%v name=%v oid=NULL",
 					className,
-					a.nameId2string[nameId])
+					a.hprof.nameId2string[nameId])
 			} else {
 				a.logger.Trace("start:: object field: className=%v name=%v oid=%v",
 					className,
-					a.nameId2string[nameId],
+					a.hprof.nameId2string[nameId],
 					childObjectId)
 				if rootScanner.IsRetained(parentObjectId, childObjectId) {
 					n := a.retainedSizeInstance(childObjectId, seen, rootScanner)
 					a.logger.Trace("finished:: object field: className=%v name=%v oid=%v, size=%v",
 						className,
-						a.nameId2string[nameId],
+						a.hprof.nameId2string[nameId],
 						childObjectId, n)
 					size += n
 				} else {
 					a.logger.Trace("IGNORE!!:: object field: className=%v name=%v oid=%v",
 						className,
-						a.nameId2string[nameId],
+						a.hprof.nameId2string[nameId],
 						childObjectId)
 				}
 			}
 			idx += 8
 		} else {
-			a.logger.Trace("Primitive Field: %v", a.nameId2string[nameId])
+			a.logger.Trace("Primitive Field: %v", a.hprof.nameId2string[nameId])
 			idx += parser.ValueSize[field.Type]
 		}
 	}
@@ -435,8 +302,8 @@ func (a HeapDumpAnalyzer) scanInstance(
 func (a HeapDumpAnalyzer) CalculateRetainedSizeOfInstancesByName(targetName string, rootScanner *RootScanner) map[uint64]uint64 {
 	objectID2size := make(map[uint64]uint64)
 
-	for classObjectId, objectIds := range a.classObjectId2objectIds {
-		name := a.nameId2string[a.classObjectId2classNameId[classObjectId]]
+	for classObjectId, objectIds := range a.hprof.classObjectId2objectIds {
+		name := a.hprof.nameId2string[a.hprof.classObjectId2classNameId[classObjectId]]
 		if name == targetName {
 			for _, objectId := range objectIds {
 				a.logger.Debug("**** Scanning %v objectId=%v", targetName, objectId)
