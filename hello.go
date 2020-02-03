@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"golang.org/x/text/message"
@@ -24,7 +23,7 @@ type HeapDumpAnalyzer struct {
 	arrayObjectId2objectArrayDump    map[uint64]*hprofdata.HProfObjectArrayDump
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
 
-	sizeCache map[string]uint64
+	sizeCache map[uint64]uint64
 
 	rootJniGlobals  map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
 	rootJniLocal    map[uint64]bool
@@ -48,7 +47,7 @@ func NewHeapDumpAnalyzer(logger *Logger, debug bool) *HeapDumpAnalyzer {
 	m.arrayObjectId2objectArrayDump = make(map[uint64]*hprofdata.HProfObjectArrayDump)
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
 
-	m.sizeCache = make(map[string]uint64)
+	m.sizeCache = make(map[uint64]uint64)
 
 	m.rootJniGlobals = make(map[uint64]bool)
 	m.rootJniLocal = make(map[uint64]bool)
@@ -264,14 +263,12 @@ func (a HeapDumpAnalyzer) GetRetainedSize(objectId uint64, rootScanner *RootScan
 }
 
 func (a HeapDumpAnalyzer) getSizeCache(objectId uint64) (uint64, bool) {
-	key := fmt.Sprintf("%v", objectId)
-	size, ok := a.sizeCache[key]
+	size, ok := a.sizeCache[objectId]
 	return size, ok
 }
 
 func (a HeapDumpAnalyzer) setSizeCache(objectId uint64, size uint64) {
-	key := fmt.Sprintf("%v", objectId)
-	a.sizeCache[key] = size
+	a.sizeCache[objectId] = size
 }
 
 func (a HeapDumpAnalyzer) retainedSizeInstance(objectId uint64, seen *Seen, rootScanner *RootScanner) uint64 {
