@@ -68,3 +68,7 @@ func (a *Logger) Error(msg string, v ...interface{}) {
 		log.Printf("[ERROR] "+a.spaces()+msg, v...)
 	}
 }
+
+func (a *Logger) IsDebugEnabled() bool {
+	return a.level <= LogLevel_DEBUG
+}

@@ -14,7 +14,6 @@ import (
 
 type HeapDumpAnalyzer struct {
 	logger *Logger
-	debug  bool
 
 	nameId2string map[uint64]string
 
@@ -39,7 +38,6 @@ func NewHeapDumpAnalyzer(logger *Logger, debug bool) *HeapDumpAnalyzer {
 	m := new(HeapDumpAnalyzer)
 
 	m.logger = logger
-	m.debug = debug
 
 	m.nameId2string = make(map[uint64]string)
 
@@ -469,7 +467,7 @@ func (a HeapDumpAnalyzer) calcObjectArraySize(dump *hprofdata.HProfObjectArrayDu
 		if objectId != 0 {
 			if rootScanner.IsRetained(dump.ArrayObjectId, objectId) {
 				s := a.retainedSizeInstance(objectId, seen, rootScanner)
-				if a.debug {
+				if a.logger.IsDebugEnabled() {
 					sizeResult = append(sizeResult, s)
 				}
 				r += s
