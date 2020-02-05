@@ -54,7 +54,7 @@ func main() {
 
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
-	analyzer := NewHeapDumpAnalyzer(logger, true)
+	analyzer := NewHeapDumpAnalyzer(logger)
 	err = analyzer.ReadFile(heapFilePath)
 	if err != nil {
 		log.Fatal(err)

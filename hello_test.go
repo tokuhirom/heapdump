@@ -12,7 +12,7 @@ type Tester struct {
 func NewTester(path string, t *testing.T) *Tester {
 	m := new(Tester)
 	m.t = t
-	m.analyzer = NewHeapDumpAnalyzer(NewLogger(LogLevel_INFO), false)
+	m.analyzer = NewHeapDumpAnalyzer(NewLogger(LogLevel_INFO))
 	err := m.analyzer.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
