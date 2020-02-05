@@ -19,7 +19,7 @@ type HProf struct {
 	arrayObjectId2objectArrayDump    map[uint64]*hprofdata.HProfObjectArrayDump
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
 
-	rootJniGlobals  map[uint64]bool // 本当は slice にしたいがなんか動かないので。。
+	rootJniGlobals  []uint64 // 本当は slice にしたいがなんか動かないので。。
 	rootJniLocal    map[uint64]bool
 	rootJavaFrame   map[uint64]bool
 	rootStickyClass map[uint64]bool
@@ -41,7 +41,7 @@ func NewHProf(logger *Logger) *HProf {
 	m.arrayObjectId2objectArrayDump = make(map[uint64]*hprofdata.HProfObjectArrayDump)
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
 
-	m.rootJniGlobals = make(map[uint64]bool)
+	m.rootJniGlobals = []uint64{}
 	m.rootJniLocal = make(map[uint64]bool)
 	m.rootJavaFrame = make(map[uint64]bool)
 	m.rootStickyClass = make(map[uint64]bool)
@@ -118,11 +118,7 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			arrayObjectId := o.GetArrayObjectId()
 			h.arrayObjectId2primitiveArrayDump[arrayObjectId] = o
 		case *hprofdata.HProfRootJNIGlobal:
-			//key = cs.countJNIGlobal
-			//cs.countJNIGlobal++
-			//a.rootObjectId[o.GetObjectId()] = true
-			h.logger.Debug("Found JNI Global: %v", o.GetObjectId())
-			h.rootJniGlobals[o.GetObjectId()] = true
+			h.rootJniGlobals = append(h.rootJniGlobals, o.GetObjectId())
 		case *hprofdata.HProfRootJNILocal:
 			//key = cs.countJNILocal
 			//cs.countJNILocal++

@@ -156,7 +156,7 @@ func (r RootScanner) IsRetained(parentObjectId uint64, childObjectId uint64) boo
 
 func (r RootScanner) ScanAll(analyzer *HeapDumpAnalyzer) {
 	r.logger.Info("Scanning retained root")
-	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJniGlobals))
+	r.ScanRoot(analyzer, analyzer.hprof.rootJniGlobals)
 	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJniLocal))
 	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJavaFrame))
 	r.ScanRoot(analyzer, keys(analyzer.hprof.rootStickyClass))
