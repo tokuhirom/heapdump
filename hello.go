@@ -28,7 +28,7 @@ func (a HeapDumpAnalyzer) ReadFile(heapFilePath string) error {
 }
 
 func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
-	log.Printf("[INFO] --- DumpInclusiveRanking")
+	a.logger.Debug("DumpInclusiveRanking")
 	var classObjectIds []uint64
 	for k := range a.hprof.classObjectId2objectIds {
 		classObjectIds = append(classObjectIds, k)
@@ -46,13 +46,13 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 		name := a.hprof.nameId2string[classNameId]
 
 		for _, objectId := range objectIds {
-			a.logger.Info("Starting scan %v(classObjectId=%v, objectId=%v)\n",
+			a.logger.Debug("Starting scan %v(classObjectId=%v, objectId=%v)\n",
 				name, classObjectId, objectId)
 
 			size := a.GetRetainedSize(objectId, rootScanner)
 			classObjectId2objectSize[classObjectId] += size
 
-			a.logger.Info("Finished scan %v(classObjectId=%v, objectId=%v) size=%v\n",
+			a.logger.Debug("Finished scan %v(classObjectId=%v, objectId=%v) size=%v\n",
 				name, classObjectId, objectId, size)
 		}
 		classObjectId2objectCount[classObjectId] = len(objectIds)
@@ -68,7 +68,7 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 	for _, classObjectId := range classObjectIds {
 		classNameId := a.hprof.classObjectId2classNameId[classObjectId]
 		name := a.hprof.nameId2string[classNameId]
-		log.Printf(p.Sprintf("[INFO] shallowSize=%10d retainedSize=%10d(count=%5d)= %s\n",
+		a.logger.Info(p.Sprintf("shallowSize=%10d retainedSize=%10d(count=%5d)= %s",
 			a.calcSoftSizeByClassObjectId(classObjectId),
 			classObjectId2objectSize[classObjectId],
 			classObjectId2objectCount[classObjectId],
@@ -115,7 +115,7 @@ func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
 		return len(primitiveArrayDump.Values) * parser.ValueSize[primitiveArrayDump.ElementType]
 	}
 
-	log.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v cd=%v",
+	a.logger.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v cd=%v",
 		objectId,
 		a.hprof.arrayObjectId2primitiveArrayDump[objectId],
 		a.hprof.arrayObjectId2objectArrayDump[objectId],
@@ -358,7 +358,7 @@ func (a HeapDumpAnalyzer) calcPrimitiveArraySize(dump *hprofdata.HProfPrimitiveA
 }
 
 func (a HeapDumpAnalyzer) calcClassSize(dump *hprofdata.HProfClassDump, seen *Seen, rootScanner *RootScanner) uint64 {
-	log.Printf("[DEBUG]      class: %v",
+	a.logger.Debug("calcClassSize: %v",
 		dump.ClassObjectId)
 
 	totalSize := uint64(0)

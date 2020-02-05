@@ -4,7 +4,6 @@ import (
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"io"
-	"log"
 	"os"
 )
 
@@ -85,10 +84,7 @@ func (h HProf) ReadFile(heapFilePath string) error {
 		//var key uint64
 		switch o := record.(type) {
 		case *hprofdata.HProfRecordUTF8:
-			//log.Printf("%v", o.GetNameId())
-			//log.Printf("%v", o.XXX_Size())
 			h.nameId2string[o.GetNameId()] = string(o.GetName())
-			//key = o.GetNameId()
 		case *hprofdata.HProfRecordLoadClass:
 			/*
 			 *                u4        class serial number (> 0)
@@ -98,7 +94,6 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			 */
 			//key = uint64(o.GetClassSerialNumber())
 			h.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
-			//log.Printf("%v=%v", o.GetClassObjectId(),
 			//	a.nameId2string[o.GetClassNameId()])
 		case *hprofdata.HProfRecordFrame:
 			// stack frame.
@@ -112,7 +107,6 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			//key = o.GetClassObjectId()
 			//classNameId := classObjectId2classNameId[o.GetClassObjectId()]
 			//className := nameId2string[classNameId]
-			//log.Printf("className=%s", className)
 			h.classObjectId2classDump[o.ClassObjectId] = o
 		case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
 			h.classObjectId2objectIds[o.ClassObjectId] = append(h.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
@@ -148,7 +142,7 @@ func (h HProf) ReadFile(heapFilePath string) error {
 		case *hprofdata.HProfRootMonitorUsed:
 			h.rootMonitorUsed[o.GetObjectId()] = true
 		default:
-			log.Printf("unknown record type!!: %#v", record)
+			h.logger.Warn("unknown record type!!: %#v", record)
 		}
 	}
 	return nil

@@ -1,6 +1,8 @@
 package main
 
-import "log"
+import (
+	"log"
+)
 
 type Logger struct {
 	indent int
@@ -71,4 +73,8 @@ func (a *Logger) Error(msg string, v ...interface{}) {
 
 func (a *Logger) IsDebugEnabled() bool {
 	return a.level <= LogLevel_DEBUG
+}
+
+func (a *Logger) Fatalf(msg string, v ...interface{}) {
+	log.Fatalf("[ERROR] "+a.spaces()+msg, v...)
 }
