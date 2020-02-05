@@ -8,13 +8,13 @@ import (
 )
 
 type RootScanner struct {
-	parents map[uint64]map[uint64]bool // objectId -> count
+	parents map[uint64]uint64 // objectId -> count
 	logger  *Logger
 }
 
 func NewRootScanner(logger *Logger) *RootScanner {
 	m := new(RootScanner)
-	m.parents = make(map[uint64]map[uint64]bool)
+	m.parents = make(map[uint64]uint64)
 	m.logger = logger
 	return m
 }
@@ -126,29 +126,32 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 }
 
 func (r RootScanner) RegisterParent(parentObjectId uint64, childObjectId uint64) {
-	if _, ok := r.parents[childObjectId]; !ok {
-		r.parents[childObjectId] = make(map[uint64]bool)
+	currentParentId, ok := r.parents[childObjectId]
+	if ok {
+		if currentParentId == 0 {
+			// ignore. already duplicated.
+		} else {
+			if parentObjectId != currentParentId {
+				// reference from another root.
+				r.parents[childObjectId] = 0
+			}
+		}
+	} else {
+		r.parents[childObjectId] = parentObjectId
+		r.logger.Trace("RegisterParent: parentObjectId=%v childObjectId=%v distance=%v currentDistance=%v",
+			parentObjectId, childObjectId)
 	}
-	r.logger.Trace("RegisterParent: parentObjectId=%v childObjectId=%v distance=%v currentDistance=%v",
-		parentObjectId, childObjectId)
-	r.parents[childObjectId][parentObjectId] = true
 }
 
 /**
 Returns true if the `objectId` is referenced from only the parent object.
 */
 func (r RootScanner) IsRetained(parentObjectId uint64, childObjectId uint64) bool {
-	parentObjectIds, ok := r.parents[childObjectId]
+	theParentObjectId, ok := r.parents[childObjectId]
 	if !ok {
 		return false
 	}
-	if len(parentObjectIds) > 1 {
-		return false
-	}
-	for key := range parentObjectIds {
-		return key == parentObjectId
-	}
-	panic("SHOULD NOT REACH HERE")
+	return theParentObjectId == parentObjectId
 }
 
 func (r RootScanner) ScanAll(analyzer *HeapDumpAnalyzer) {
