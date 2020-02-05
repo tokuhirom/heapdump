@@ -12,6 +12,7 @@ import (
 type HeapDumpAnalyzer struct {
 	logger *Logger
 	hprof *HProf
+	softSizeCalculator *SoftSizeCalculator
 	sizeCache map[uint64]uint64
 }
 
@@ -20,6 +21,7 @@ func NewHeapDumpAnalyzer(logger *Logger, debug bool) *HeapDumpAnalyzer {
 	m.logger = logger
 	m.sizeCache = make(map[uint64]uint64)
 	m.hprof = NewHProf(logger)
+	m.softSizeCalculator = NewSoftSizeCalculator(logger)
 	return m
 }
 
@@ -69,60 +71,13 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) {
 		classNameId := a.hprof.classObjectId2classNameId[classObjectId]
 		name := a.hprof.nameId2string[classNameId]
 		a.logger.Info(p.Sprintf("shallowSize=%10d retainedSize=%10d(count=%5d)= %s",
-			a.calcSoftSizeByClassObjectId(classObjectId),
+			a.softSizeCalculator.CalcSoftSizeByClassObjectId(a.hprof, classObjectId),
 			classObjectId2objectSize[classObjectId],
 			classObjectId2objectCount[classObjectId],
 			name))
 	}
 }
 
-func (a HeapDumpAnalyzer) calcSoftSizeByClassObjectId(classObjectId uint64) int {
-	size := 0
-	for _, objectId := range a.hprof.classObjectId2objectIds[classObjectId] {
-		size += a.calcSoftSize(objectId)
-	}
-	return size
-}
-
-func (a HeapDumpAnalyzer) calcSoftSize(objectId uint64) int {
-	instanceDump := a.hprof.objectId2instanceDump[objectId]
-	if instanceDump != nil {
-		return 16 + len(instanceDump.Values)
-	}
-
-	classDump := a.hprof.classObjectId2classDump[objectId]
-	if classDump != nil {
-		idx := 0
-		for _, field := range classDump.StaticFields {
-			if field.Type == hprofdata.HProfValueType_OBJECT {
-				idx += 8
-			} else {
-				idx += parser.ValueSize[field.Type]
-			}
-		}
-		return idx
-	}
-
-	// object array
-	objectArrayDump := a.hprof.arrayObjectId2objectArrayDump[objectId]
-	if objectArrayDump != nil {
-		return len(objectArrayDump.ElementObjectIds) * 8
-	}
-
-	// primitive array
-	primitiveArrayDump := a.hprof.arrayObjectId2primitiveArrayDump[objectId]
-	if primitiveArrayDump != nil {
-		return len(primitiveArrayDump.Values) * parser.ValueSize[primitiveArrayDump.ElementType]
-	}
-
-	a.logger.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v cd=%v",
-		objectId,
-		a.hprof.arrayObjectId2primitiveArrayDump[objectId],
-		a.hprof.arrayObjectId2objectArrayDump[objectId],
-		a.hprof.objectId2instanceDump[objectId],
-		a.hprof.classObjectId2classDump[objectId])
-	return -1 // should not reach here
-}
 
 func (a HeapDumpAnalyzer) GetRetainedSize(objectId uint64, rootScanner *RootScanner) uint64 {
 	seen := NewSeen()
