@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -55,13 +56,23 @@ func main() {
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
 	analyzer := NewHeapDumpAnalyzer(logger)
-	err = analyzer.ReadFile(heapFilePath)
-	if err != nil {
-		log.Fatal(err)
+	{
+		start := time.Now()
+		err = analyzer.ReadFile(heapFilePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		elapsed := time.Since(start)
+		logger.Info("Read heap dump file in %s.", elapsed)
 	}
 
 	rootScanner := NewRootScanner(logger)
-	rootScanner.ScanAll(analyzer)
+	{
+		start := time.Now()
+		rootScanner.ScanAll(analyzer)
+		elapsed := time.Since(start)
+		logger.Info("Scanned retained root in %s.", elapsed)
+	}
 
 	if *rootScanOnly {
 		os.Exit(0)
@@ -71,6 +82,9 @@ func main() {
 		size := analyzer.CalculateRetainedSizeOfInstancesByName(*targetClassName, rootScanner)
 		analyzer.logger.Info("ReadFile result: %v=%v", *targetClassName, size)
 	} else {
+		start := time.Now()
 		analyzer.DumpInclusiveRanking(rootScanner)
+		elapsed := time.Since(start)
+		logger.Info("Calculated inclusive heap size in %s.", elapsed)
 	}
 }
