@@ -86,27 +86,14 @@ func (h HProf) ReadFile(heapFilePath string) error {
 		case *hprofdata.HProfRecordUTF8:
 			h.nameId2string[o.GetNameId()] = string(o.GetName())
 		case *hprofdata.HProfRecordLoadClass:
-			/*
-			 *                u4        class serial number (> 0)
-			 *                id        class object ID
-			 *                u4        stack trace serial number
-			 *                id        class name ID
-			 */
-			//key = uint64(o.GetClassSerialNumber())
 			h.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
-			//	a.nameId2string[o.GetClassNameId()])
 		case *hprofdata.HProfRecordFrame:
-			// stack frame.
-			//key = o.GetStackFrameId()
+			break
 		case *hprofdata.HProfRecordTrace:
-			// stack trace
-			//key = uint64(o.GetStackTraceSerialNumber())
+			break
 		case *hprofdata.HProfRecordHeapDumpBoundary:
 			break
 		case *hprofdata.HProfClassDump:
-			//key = o.GetClassObjectId()
-			//classNameId := classObjectId2classNameId[o.GetClassObjectId()]
-			//className := nameId2string[classNameId]
 			h.classObjectId2classDump[o.ClassObjectId] = o
 		case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
 			h.classObjectId2objectIds[o.ClassObjectId] = append(h.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
@@ -118,26 +105,14 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			arrayObjectId := o.GetArrayObjectId()
 			h.arrayObjectId2primitiveArrayDump[arrayObjectId] = o
 		case *hprofdata.HProfRootJNIGlobal:
-			//key = cs.countJNIGlobal
-			//cs.countJNIGlobal++
-			//a.rootObjectId[o.GetObjectId()] = true
-			h.logger.Debug("Found JNI Global: %v", o.GetObjectId())
 			h.rootJniGlobals[o.GetObjectId()] = true
 		case *hprofdata.HProfRootJNILocal:
-			//key = cs.countJNILocal
-			//cs.countJNILocal++
 			h.rootJniLocal[o.GetObjectId()] = true
 		case *hprofdata.HProfRootJavaFrame:
-			//key = cs.countJavaFrame
-			//cs.countJavaFrame++
 			h.rootJavaFrame[o.GetObjectId()] = true
 		case *hprofdata.HProfRootStickyClass:
-			//key = cs.countStickyClass
-			//cs.countStickyClass++
 			h.rootStickyClass[o.GetObjectId()] = true
 		case *hprofdata.HProfRootThreadObj:
-			//key = cs.countThreadObj
-			//cs.countThreadObj++
 			h.rootThreadObj[o.GetThreadObjectId()] = true
 		case *hprofdata.HProfRootMonitorUsed:
 			h.rootMonitorUsed[o.GetObjectId()] = true
