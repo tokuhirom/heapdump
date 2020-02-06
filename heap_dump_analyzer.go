@@ -1,15 +1,19 @@
 package main
 
 import (
+	"github.com/google/hprof-parser/index"
 	"golang.org/x/text/message"
+	"io/ioutil"
+	"os"
 	"sort"
 )
 
 type HeapDumpAnalyzer struct {
 	logger                 *Logger
-	hprof                  *HProf
+	hprof                  *HProf // TODO deprecate this.
 	softSizeCalculator     *SoftSizeCalculator
 	retainedSizeCalculator *RetainedSizeCalculator
+	index                  *index.Index
 }
 
 func NewHeapDumpAnalyzer(logger *Logger) *HeapDumpAnalyzer {
@@ -22,6 +26,16 @@ func NewHeapDumpAnalyzer(logger *Logger) *HeapDumpAnalyzer {
 }
 
 func (a HeapDumpAnalyzer) ReadFile(heapFilePath string) error {
+	// todo: clean up tempdir.
+	indexPath, err := ioutil.TempDir(os.TempDir(), "hprof")
+	if err != nil {
+		return err
+	}
+	index, err := index.OpenOrCreateIndex(heapFilePath, indexPath)
+	if err != nil {
+		return err
+	}
+	a.index = index
 	return a.hprof.ReadFile(heapFilePath)
 }
 
