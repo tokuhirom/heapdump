@@ -81,44 +81,47 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			prev = pos
 		}
 
-		//var key uint64
-		switch o := record.(type) {
-		case *hprofdata.HProfRecordUTF8:
-			h.nameId2string[o.GetNameId()] = string(o.GetName())
-		case *hprofdata.HProfRecordLoadClass:
-			h.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
-		case *hprofdata.HProfRecordFrame:
-			break
-		case *hprofdata.HProfRecordTrace:
-			break
-		case *hprofdata.HProfRecordHeapDumpBoundary:
-			break
-		case *hprofdata.HProfClassDump:
-			h.classObjectId2classDump[o.ClassObjectId] = o
-		case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
-			h.classObjectId2objectIds[o.ClassObjectId] = append(h.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
-			h.objectId2instanceDump[o.ObjectId] = o
-		case *hprofdata.HProfObjectArrayDump:
-			arrayObjectId := o.GetArrayObjectId()
-			h.arrayObjectId2objectArrayDump[arrayObjectId] = o
-		case *hprofdata.HProfPrimitiveArrayDump:
-			arrayObjectId := o.GetArrayObjectId()
-			h.arrayObjectId2primitiveArrayDump[arrayObjectId] = o
-		case *hprofdata.HProfRootJNIGlobal:
-			h.rootJniGlobals[o.GetObjectId()] = true
-		case *hprofdata.HProfRootJNILocal:
-			h.rootJniLocal[o.GetObjectId()] = true
-		case *hprofdata.HProfRootJavaFrame:
-			h.rootJavaFrame[o.GetObjectId()] = true
-		case *hprofdata.HProfRootStickyClass:
-			h.rootStickyClass[o.GetObjectId()] = true
-		case *hprofdata.HProfRootThreadObj:
-			h.rootThreadObj[o.GetThreadObjectId()] = true
-		case *hprofdata.HProfRootMonitorUsed:
-			h.rootMonitorUsed[o.GetObjectId()] = true
-		default:
-			h.logger.Warn("unknown record type!!: %#v", record)
-		}
+		h.addRecord(record)
 	}
 	return nil
+}
+
+func (h HProf) addRecord(record interface{}) {
+	switch o := record.(type) {
+	case *hprofdata.HProfRecordUTF8:
+		h.nameId2string[o.GetNameId()] = string(o.GetName())
+	case *hprofdata.HProfRecordLoadClass:
+		h.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
+	case *hprofdata.HProfRecordFrame:
+		break
+	case *hprofdata.HProfRecordTrace:
+		break
+	case *hprofdata.HProfRecordHeapDumpBoundary:
+		break
+	case *hprofdata.HProfClassDump:
+		h.classObjectId2classDump[o.ClassObjectId] = o
+	case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
+		h.classObjectId2objectIds[o.ClassObjectId] = append(h.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
+		h.objectId2instanceDump[o.ObjectId] = o
+	case *hprofdata.HProfObjectArrayDump:
+		arrayObjectId := o.GetArrayObjectId()
+		h.arrayObjectId2objectArrayDump[arrayObjectId] = o
+	case *hprofdata.HProfPrimitiveArrayDump:
+		arrayObjectId := o.GetArrayObjectId()
+		h.arrayObjectId2primitiveArrayDump[arrayObjectId] = o
+	case *hprofdata.HProfRootJNIGlobal:
+		h.rootJniGlobals[o.GetObjectId()] = true
+	case *hprofdata.HProfRootJNILocal:
+		h.rootJniLocal[o.GetObjectId()] = true
+	case *hprofdata.HProfRootJavaFrame:
+		h.rootJavaFrame[o.GetObjectId()] = true
+	case *hprofdata.HProfRootStickyClass:
+		h.rootStickyClass[o.GetObjectId()] = true
+	case *hprofdata.HProfRootThreadObj:
+		h.rootThreadObj[o.GetThreadObjectId()] = true
+	case *hprofdata.HProfRootMonitorUsed:
+		h.rootMonitorUsed[o.GetObjectId()] = true
+	default:
+		h.logger.Warn("unknown record type!!: %#v", record)
+	}
 }
