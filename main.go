@@ -20,11 +20,21 @@ func main() {
 	targetClassName := flag.String("target", "", "Target class name")
 	rlimitString := flag.String("rlimit", "4GB", "RLimit")
 	memprofile := flag.String("memprofile", "", "write memory profile to `file`")
+	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
 
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 1 {
 		log.Fatal("Usage: heapdump path/to/heapdump.hprof")
+	}
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
 
 	heapFilePath := args[0]
