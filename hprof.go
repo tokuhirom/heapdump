@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -11,25 +13,24 @@ import (
 )
 
 const (
-	keyPrefixString          = "string-"
-	keyPrefixLoadedClass     = "loadedclass-"
-	keyPrefixFrame           = "frame-"
-	keyPrefixTrace           = "trace-"
-	keyPrefixClass           = "class-"
-	keyPrefixInstance        = "instance-"
-	keyPrefixObjectArray     = "objectarray-"
-	keyPrefixPrimitiveArray  = "primitivearray-"
-	keyPrefixRootJNIGlobal   = "rootjniglobal-"
-	keyPrefixRootJNILocal    = "rootjnilocal-"
-	keyPrefixRootJavaFrame   = "rootjavaframe-"
-	keyPrefixRootStickyClass = "rootstickyclass-"
-	keyPrefixRootThreadObj   = "rootthreadobj-"
+	keyPrefixString                    = "string-"
+	keyPrefixClassObjectId2ClassNameId = "coid2cnid-"
+	keyPrefixFrame                     = "frame-"
+	keyPrefixTrace                     = "trace-"
+	keyPrefixClass                     = "class-"
+	keyPrefixInstance                  = "instance-"
+	keyPrefixObjectArray               = "objectarray-"
+	keyPrefixPrimitiveArray            = "primitivearray-"
+	keyPrefixRootJNIGlobal             = "rootjniglobal-"
+	keyPrefixRootJNILocal              = "rootjnilocal-"
+	keyPrefixRootJavaFrame             = "rootjavaframe-"
+	keyPrefixRootStickyClass           = "rootstickyclass-"
+	keyPrefixRootThreadObj             = "rootthreadobj-"
 )
 
 type HProf struct {
 	logger *Logger
 
-	classObjectId2classNameId        map[uint64]uint64
 	classObjectId2objectIds          map[uint64][]uint64
 	classObjectId2classDump          map[uint64]*hprofdata.HProfClassDump
 	arrayObjectId2primitiveArrayDump map[uint64]*hprofdata.HProfPrimitiveArrayDump
@@ -50,7 +51,6 @@ func NewHProf(logger *Logger, indexFilePath string) (*HProf, error) {
 
 	m.logger = logger
 
-	m.classObjectId2classNameId = make(map[uint64]uint64)
 	m.classObjectId2objectIds = make(map[uint64][]uint64)
 	m.classObjectId2classDump = make(map[uint64]*hprofdata.HProfClassDump)
 	m.arrayObjectId2primitiveArrayDump = make(map[uint64]*hprofdata.HProfPrimitiveArrayDump)
@@ -109,7 +109,10 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			prev = pos
 		}
 
-		h.addRecord(record, batch)
+		err = h.addRecord(record, batch)
+		if err != nil {
+			return err
+		}
 		if batch.Len() > 100000 {
 			if err := h.db.Write(batch, nil); err != nil {
 				return err
@@ -117,7 +120,6 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			batch.Reset()
 		}
 	}
-
 
 	// At last, write the mtime of the hprof into the DB.
 	mtime, err := getMtimeInString(heapFilePath)
@@ -146,12 +148,24 @@ func createKey(prefix string, id uint64) []byte {
 	return []byte(prefix + strconv.FormatUint(id, 16))
 }
 
-func (h HProf) addRecord(record interface{}, batch *leveldb.Batch) {
+func writeRecord(batch *leveldb.Batch, prefix string, id uint64, record interface{}) error {
+	m := record.(proto.Message)
+	bs, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	batch.Put(createKey(prefix, id), bs)
+	return nil
+}
+
+func (h HProf) addRecord(record interface{}, batch *leveldb.Batch) error {
 	switch o := record.(type) {
 	case *hprofdata.HProfRecordUTF8:
 		batch.Put(createKey(keyPrefixString, o.GetNameId()), o.GetName())
 	case *hprofdata.HProfRecordLoadClass:
-		h.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
+		buf := make([]byte, binary.MaxVarintLen64)
+		n := binary.PutUvarint(buf, o.GetClassNameId())
+		batch.Put(createKey(keyPrefixClassObjectId2ClassNameId, o.GetClassObjectId()), buf[:n])
 	case *hprofdata.HProfRecordFrame:
 		break
 	case *hprofdata.HProfRecordTrace:
@@ -184,6 +198,7 @@ func (h HProf) addRecord(record interface{}, batch *leveldb.Batch) {
 	default:
 		h.logger.Warn("unknown record type!!: %#v", record)
 	}
+	return nil
 }
 
 func (h HProf) GetStringByNameId(id uint64) (string, error) {
@@ -193,4 +208,25 @@ func (h HProf) GetStringByNameId(id uint64) (string, error) {
 			id, createKey(keyPrefixString, id), err)
 	}
 	return string(bytes), nil
+}
+
+func (h HProf) GetClassNameIdByClassObjectId(id uint64) (uint64, error) {
+	bytes, err := h.db.Get(createKey(keyPrefixClassObjectId2ClassNameId, id), nil)
+	if err != nil {
+		return 0, fmt.Errorf("cannot read string by id=%v, key=%v: %v",
+			id, createKey(keyPrefixString, id), err)
+	}
+	x, n := binary.Uvarint(bytes)
+	if n != len(bytes) {
+		return 0, fmt.Errorf("uvarint did not consume all of in")
+	}
+	return x, nil
+}
+
+func (h HProf) GetClassNameByClassObjectId(classObjectId uint64) (string, error) {
+	classNameId, err := h.GetClassNameIdByClassObjectId(classObjectId)
+	if err != nil {
+		return "", err
+	}
+	return h.GetStringByNameId(classNameId)
 }

@@ -51,8 +51,7 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) error {
 	classObjectId2objectCount := make(map[uint64]int)
 	for _, classObjectId := range classObjectIds {
 		objectIds := a.hprof.classObjectId2objectIds[classObjectId]
-		classNameId := a.hprof.classObjectId2classNameId[classObjectId]
-		name, err := a.hprof.GetStringByNameId(classNameId)
+		name, err := a.hprof.GetClassNameByClassObjectId(classObjectId)
 		if err != nil {
 			return err
 		}
@@ -81,8 +80,7 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) error {
 	// print result
 	p := message.NewPrinter(message.MatchLanguage("en"))
 	for _, classObjectId := range classObjectIds {
-		classNameId := a.hprof.classObjectId2classNameId[classObjectId]
-		name, err := a.hprof.GetStringByNameId(classNameId)
+		name, err := a.hprof.GetClassNameByClassObjectId(classObjectId)
 		if err != nil {
 			return err
 		}
@@ -104,7 +102,7 @@ func (a HeapDumpAnalyzer) CalculateRetainedSizeOfInstancesByName(targetName stri
 	objectID2size := make(map[uint64]uint64)
 
 	for classObjectId, objectIds := range a.hprof.classObjectId2objectIds {
-		name, err := a.hprof.GetStringByNameId(a.hprof.classObjectId2classNameId[classObjectId])
+		name, err := a.hprof.GetClassNameByClassObjectId(classObjectId)
 		if err != nil {
 			return nil, err
 		}
