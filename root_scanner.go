@@ -26,7 +26,7 @@ func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) {
 		r.logger.Debug("rootObjectId=%v", rootObjectId)
 		r.scan(rootObjectId, a, seen)
 	}
-	r.logger.Debug("--- /ScanRoot --- %v %v")
+	r.logger.Debug("--- /ScanRoot ---")
 }
 
 func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
@@ -54,8 +54,7 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 			for _, instanceField := range classDump.InstanceFields {
 				if instanceField.Type == hprofdata.HProfValueType_OBJECT {
 					// TODO 32bit support
-					r.logger.Trace("instance field = %v.%v", instanceDump.ObjectId,
-						a.hprof.nameId2string[instanceField.NameId])
+					r.logger.Trace("instance field = %v", instanceDump.ObjectId)
 					objectIdBytes := values[idx : idx+8]
 					childObjectId := binary.BigEndian.Uint64(objectIdBytes)
 					r.RegisterParent(objectId, childObjectId)

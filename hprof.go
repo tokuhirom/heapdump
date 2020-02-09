@@ -1,16 +1,33 @@
 package main
 
 import (
+	"fmt"
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
+	"github.com/syndtr/goleveldb/leveldb"
 	"io"
 	"os"
+	"strconv"
+)
+
+const (
+	keyPrefixString          = "string-"
+	keyPrefixLoadedClass     = "loadedclass-"
+	keyPrefixFrame           = "frame-"
+	keyPrefixTrace           = "trace-"
+	keyPrefixClass           = "class-"
+	keyPrefixInstance        = "instance-"
+	keyPrefixObjectArray     = "objectarray-"
+	keyPrefixPrimitiveArray  = "primitivearray-"
+	keyPrefixRootJNIGlobal   = "rootjniglobal-"
+	keyPrefixRootJNILocal    = "rootjnilocal-"
+	keyPrefixRootJavaFrame   = "rootjavaframe-"
+	keyPrefixRootStickyClass = "rootstickyclass-"
+	keyPrefixRootThreadObj   = "rootthreadobj-"
 )
 
 type HProf struct {
 	logger *Logger
-
-	nameId2string map[uint64]string
 
 	classObjectId2classNameId        map[uint64]uint64
 	classObjectId2objectIds          map[uint64][]uint64
@@ -25,14 +42,13 @@ type HProf struct {
 	rootStickyClass map[uint64]bool
 	rootThreadObj   map[uint64]bool
 	rootMonitorUsed map[uint64]bool
+	db              *leveldb.DB
 }
 
-func NewHProf(logger *Logger) *HProf {
+func NewHProf(logger *Logger, indexFilePath string) (*HProf, error) {
 	m := new(HProf)
 
 	m.logger = logger
-
-	m.nameId2string = make(map[uint64]string)
 
 	m.classObjectId2classNameId = make(map[uint64]uint64)
 	m.classObjectId2objectIds = make(map[uint64][]uint64)
@@ -48,7 +64,17 @@ func NewHProf(logger *Logger) *HProf {
 	m.rootThreadObj = make(map[uint64]bool)
 	m.rootMonitorUsed = make(map[uint64]bool)
 
-	return m
+	db, err := leveldb.OpenFile(indexFilePath, nil)
+	if err != nil {
+		return nil, err
+	}
+	m.db = db
+
+	return m, nil
+}
+
+func (h HProf) Close() error {
+	return h.db.Close()
 }
 
 func (h HProf) ReadFile(heapFilePath string) error {
@@ -66,6 +92,8 @@ func (h HProf) ReadFile(heapFilePath string) error {
 		return nil
 	}
 
+	batch := new(leveldb.Batch)
+
 	var prev int64
 	for {
 		record, err := p.ParseRecord()
@@ -81,15 +109,47 @@ func (h HProf) ReadFile(heapFilePath string) error {
 			prev = pos
 		}
 
-		h.addRecord(record)
+		h.addRecord(record, batch)
+		if batch.Len() > 100000 {
+			if err := h.db.Write(batch, nil); err != nil {
+				return err
+			}
+			batch.Reset()
+		}
 	}
+
+
+	// At last, write the mtime of the hprof into the DB.
+	mtime, err := getMtimeInString(heapFilePath)
+	if err != nil {
+		return err
+	}
+	batch.Put([]byte("hprof_mtime"), []byte(mtime))
+
+	if err := h.db.Write(batch, nil); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (h HProf) addRecord(record interface{}) {
+func getMtimeInString(fileName string) (string, error) {
+	fi, err := os.Stat(fileName)
+	if err != nil {
+		return "", err
+	}
+	mtime := fi.ModTime()
+	return strconv.FormatUint(uint64(mtime.Unix()), 36), nil
+}
+
+func createKey(prefix string, id uint64) []byte {
+	return []byte(prefix + strconv.FormatUint(id, 16))
+}
+
+func (h HProf) addRecord(record interface{}, batch *leveldb.Batch) {
 	switch o := record.(type) {
 	case *hprofdata.HProfRecordUTF8:
-		h.nameId2string[o.GetNameId()] = string(o.GetName())
+		batch.Put(createKey(keyPrefixString, o.GetNameId()), o.GetName())
 	case *hprofdata.HProfRecordLoadClass:
 		h.classObjectId2classNameId[o.GetClassObjectId()] = o.GetClassNameId()
 	case *hprofdata.HProfRecordFrame:
@@ -124,4 +184,13 @@ func (h HProf) addRecord(record interface{}) {
 	default:
 		h.logger.Warn("unknown record type!!: %#v", record)
 	}
+}
+
+func (h HProf) GetStringByNameId(id uint64) (string, error) {
+	bytes, err := h.db.Get(createKey(keyPrefixString, id), nil)
+	if err != nil {
+		return "", fmt.Errorf("cannot read string by id=%v, key=%v: %v",
+			id, createKey(keyPrefixString, id), err)
+	}
+	return string(bytes), nil
 }

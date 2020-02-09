@@ -68,7 +68,7 @@ func main() {
 
 	// calculate the size of each instance objects.
 	// 途中で sleep とか適宜入れる？
-	analyzer := NewHeapDumpAnalyzer(logger)
+	analyzer, _ := NewHeapDumpAnalyzer(logger)
 	{
 		start := time.Now()
 		err = analyzer.ReadFile(heapFilePath)
@@ -104,11 +104,17 @@ func main() {
 	}
 
 	if targetClassName != nil && len(*targetClassName) > 0 {
-		size := analyzer.CalculateRetainedSizeOfInstancesByName(*targetClassName, rootScanner)
+		size, err := analyzer.CalculateRetainedSizeOfInstancesByName(*targetClassName, rootScanner)
+		if err != nil {
+			log.Fatal(err)
+		}
 		analyzer.logger.Info("ReadFile result: %v=%v", *targetClassName, size)
 	} else {
 		start := time.Now()
-		analyzer.DumpInclusiveRanking(rootScanner)
+		err := analyzer.DumpInclusiveRanking(rootScanner)
+		if err != nil {
+			log.Fatalf("An error occurred: %v", err)
+		}
 		elapsed := time.Since(start)
 		logger.Info("Calculated inclusive heap size in %s.", elapsed)
 	}

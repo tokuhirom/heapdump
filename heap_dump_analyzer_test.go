@@ -12,7 +12,7 @@ type Tester struct {
 func NewTester(path string, t *testing.T) *Tester {
 	m := new(Tester)
 	m.t = t
-	m.analyzer = NewHeapDumpAnalyzer(NewLogger(LogLevel_INFO))
+	m.analyzer, _ = NewHeapDumpAnalyzer(NewLogger(LogLevel_INFO))
 	err := m.analyzer.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +24,10 @@ func NewTester(path string, t *testing.T) *Tester {
 func (a *Tester) AssertSize(targetClass string, expectedRetainedSize uint64) {
 	rootScanner := NewRootScanner(a.analyzer.logger)
 	rootScanner.ScanAll(a.analyzer)
-	sizeMap := a.analyzer.CalculateRetainedSizeOfInstancesByName(targetClass, rootScanner)
+	sizeMap, err := a.analyzer.CalculateRetainedSizeOfInstancesByName(targetClass, rootScanner)
+	if err != nil {
+		a.t.Fatal(err)
+	}
 
 	var sizeList []uint64
 	for _, size := range sizeMap {
@@ -44,20 +47,26 @@ func (a *Tester) AssertSize(targetClass string, expectedRetainedSize uint64) {
 	}
 }
 
-func (a *Tester) GetTotalSize(targetClass string) uint64 {
+func (a *Tester) GetTotalSize(targetClass string) (uint64, error) {
 	rootScanner := NewRootScanner(a.analyzer.logger)
 	rootScanner.ScanAll(a.analyzer)
-	sizeMap := a.analyzer.CalculateRetainedSizeOfInstancesByName(targetClass, rootScanner)
+	sizeMap, err := a.analyzer.CalculateRetainedSizeOfInstancesByName(targetClass, rootScanner)
+	if err != nil {
+		return 0, err
+	}
 
 	totalSize := uint64(0)
 	for _, size := range sizeMap {
 		totalSize += size
 	}
-	return totalSize
+	return totalSize, nil
 }
 
 func (a *Tester) AssertTotalSize(targetClass string, expectedRetainedSize uint64) {
-	totalSize := a.GetTotalSize(targetClass)
+	totalSize, err := a.GetTotalSize(targetClass)
+	if err != nil {
+		a.t.Fatal(err)
+	}
 
 	if totalSize != expectedRetainedSize {
 		a.t.Fatalf("%v instance should be %v bytes(visualvm says). But %v",
@@ -68,7 +77,10 @@ func (a *Tester) AssertTotalSize(targetClass string, expectedRetainedSize uint64
 }
 
 func (a *Tester) AssertTotalSizeLessThan(targetClass string, expectedRetainedSize uint64) {
-	totalSize := a.GetTotalSize(targetClass)
+	totalSize, err := a.GetTotalSize(targetClass)
+	if err != nil {
+		a.t.Fatal(err)
+	}
 
 	if totalSize >= expectedRetainedSize {
 		a.t.Fatalf("%v instance should be less than %v bytes. But %v",

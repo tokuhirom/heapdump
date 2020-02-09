@@ -19,22 +19,22 @@ func NewRetainedSizeCalculator(logger *Logger) *RetainedSizeCalculator {
 	return m
 }
 
-func (a RetainedSizeCalculator) GetRetainedSize(hprof *HProf, rootScanner *RootScanner, objectId uint64) uint64 {
+func (a RetainedSizeCalculator) GetRetainedSize(hprof *HProf, rootScanner *RootScanner, objectId uint64) (uint64, error) {
 	seen := NewSeen()
 	return a.retainedSizeInstance(hprof, objectId, seen, rootScanner)
 }
 
-func (a RetainedSizeCalculator) retainedSizeInstance(hprof *HProf, objectId uint64, seen *Seen, rootScanner *RootScanner) uint64 {
+func (a RetainedSizeCalculator) retainedSizeInstance(hprof *HProf, objectId uint64, seen *Seen, rootScanner *RootScanner) (uint64, error) {
 	if seen == nil {
 		panic("Missing seen")
 	}
 	if seen.HasKey(objectId) { // recursive counting.
 		a.logger.Debug("Recursive counting occurred: %v", objectId)
-		return 0
+		return 0, nil
 	}
 
 	if size, ok := a.getSizeCache(objectId); ok {
-		return size
+		return size, nil
 	}
 
 	seen.Add(objectId)
@@ -47,7 +47,10 @@ func (a RetainedSizeCalculator) retainedSizeInstance(hprof *HProf, objectId uint
 
 	instanceDump := hprof.objectId2instanceDump[objectId]
 	if instanceDump != nil {
-		name := hprof.nameId2string[hprof.classObjectId2classNameId[instanceDump.ClassObjectId]]
+		name, err := hprof.GetStringByNameId(hprof.classObjectId2classNameId[instanceDump.ClassObjectId])
+		if err != nil {
+			return 0, err
+		}
 
 		a.logger.Debug("retainedSizeInstance(%v) objectId=%d seen=%v",
 			name,
@@ -62,28 +65,27 @@ func (a RetainedSizeCalculator) retainedSizeInstance(hprof *HProf, objectId uint
 
 	objectArrayDump := hprof.arrayObjectId2objectArrayDump[objectId]
 	if objectArrayDump != nil {
-		return a.calcObjectArraySize(hprof, objectArrayDump, seen, rootScanner)
+		return a.calcObjectArraySize(hprof, objectArrayDump, seen, rootScanner), nil
 	}
 
 	primitiveArrayDump := hprof.arrayObjectId2primitiveArrayDump[objectId]
 	if primitiveArrayDump != nil {
-		return a.calcPrimitiveArraySize(primitiveArrayDump)
+		return a.calcPrimitiveArraySize(primitiveArrayDump), nil
 	}
 
 	classDump := hprof.classObjectId2classDump[objectId]
 	if classDump != nil {
-		return a.calcClassSize(hprof, classDump, seen, rootScanner)
+		return a.calcClassSize(hprof, classDump, seen, rootScanner), nil
 	}
 
 	log.Fatalf(
-		"[ERROR] Unknown instance: objectId=%v instanceDump=%v str=%v primArray=%v objArray=%v class=%v",
+		"[ERROR] Unknown instance: objectId=%v instanceDump=%v primArray=%v objArray=%v class=%v",
 		objectId,
 		instanceDump,
-		hprof.nameId2string[objectId],
 		hprof.arrayObjectId2primitiveArrayDump[objectId],
 		hprof.arrayObjectId2objectArrayDump[objectId],
 		hprof.classObjectId2classNameId[objectId])
-	return 0 // should not reach here
+	return 0, nil // should not reach here
 }
 
 func (a RetainedSizeCalculator) getSizeCache(objectId uint64) (uint64, bool) {
@@ -100,11 +102,9 @@ func (a RetainedSizeCalculator) calcObjectSize(
 	instanceDump *hprofdata.HProfInstanceDump,
 	objectId uint64,
 	seen *Seen,
-	rootScanner *RootScanner) uint64 {
+	rootScanner *RootScanner) (uint64, error) {
 	classDump := hprof.classObjectId2classDump[instanceDump.ClassObjectId]
-	classNameId := hprof.classObjectId2classNameId[classDump.ClassObjectId]
-	a.logger.Debug("calcObjectSize(name=%v) oid=%d",
-		hprof.nameId2string[classNameId],
+	a.logger.Debug("calcObjectSize oid=%d",
 		objectId)
 
 	// instance field を舐めてサイズを計算する。super があればそこも全てみる。
@@ -117,31 +117,29 @@ func (a RetainedSizeCalculator) calcObjectSize(
 	values := instanceDump.GetValues()
 	// 読み込んだバイト数, サイズ
 	for {
-		name := hprof.nameId2string[hprof.classObjectId2classNameId[classDump.ClassObjectId]]
+		name, err := hprof.GetStringByNameId(hprof.classObjectId2classNameId[classDump.ClassObjectId])
+		if err != nil {
+			return 0, err
+		}
 		a.logger.Trace("scan instance: name=%v",
 			name)
 
 		nIdx, nSize := a.scanInstance(hprof, classDump.InstanceFields, values, seen, name, objectId, rootScanner)
 		size += nSize
-		a.logger.Trace("nSize=%v (%v)", nSize,
-			hprof.nameId2string[hprof.classObjectId2classNameId[classDump.ClassObjectId]])
+		a.logger.Trace("nSize=%v (%v)", nSize, name)
 		values = values[nIdx:]
 		if classDump.SuperClassObjectId == 0 {
 			break
 		} else {
 			classDump = hprof.classObjectId2classDump[classDump.SuperClassObjectId]
-			a.logger.Trace("checking super class %v",
-				hprof.nameId2string[hprof.classObjectId2classNameId[classDump.ClassObjectId]])
 		}
 	}
 
-	a.logger.Debug("/calcObjectSize(name=%v) oid=%d size=%v seen=%v",
-		hprof.nameId2string[classNameId],
-		objectId,
-		size, seen)
+	a.logger.Debug("/calcObjectSize oid=%d size=%v seen=%v",
+		objectId, size, seen)
 
 	a.setSizeCache(objectId, size)
-	return size
+	return size, nil
 }
 
 func (a RetainedSizeCalculator) scanInstance(
@@ -157,38 +155,33 @@ func (a RetainedSizeCalculator) scanInstance(
 	idx := 0
 
 	for _, field := range fields {
-		nameId := field.NameId
 		if field.Type == hprofdata.HProfValueType_OBJECT {
 			// TODO 32bit support(特にやる気なし)
 			objectIdBytes := values[idx : idx+8]
 			childObjectId := binary.BigEndian.Uint64(objectIdBytes)
 			if childObjectId == 0 {
 				// the field contains null
-				a.logger.Trace("object field: className=%v name=%v oid=NULL",
-					className,
-					hprof.nameId2string[nameId])
+				a.logger.Trace("object field: className=%v oid=NULL",
+					className)
 			} else {
-				a.logger.Trace("start:: object field: className=%v name=%v oid=%v",
+				a.logger.Trace("start:: object field: className=%v oid=%v",
 					className,
-					hprof.nameId2string[nameId],
 					childObjectId)
 				if rootScanner.IsRetained(parentObjectId, childObjectId) {
-					n := a.retainedSizeInstance(hprof, childObjectId, seen, rootScanner)
-					a.logger.Trace("finished:: object field: className=%v name=%v oid=%v, size=%v",
+					n, _ := a.retainedSizeInstance(hprof, childObjectId, seen, rootScanner)
+					a.logger.Trace("finished:: object field: className=%v oid=%v, size=%v",
 						className,
-						hprof.nameId2string[nameId],
 						childObjectId, n)
 					size += n
 				} else {
-					a.logger.Trace("IGNORE!!:: object field: className=%v name=%v oid=%v",
+					a.logger.Trace("IGNORE!!:: object field: className=%v oid=%v",
 						className,
-						hprof.nameId2string[nameId],
 						childObjectId)
 				}
 			}
 			idx += 8
 		} else {
-			a.logger.Trace("Primitive Field: %v", hprof.nameId2string[nameId])
+			a.logger.Trace("Primitive Field")
 			idx += parser.ValueSize[field.Type]
 		}
 	}
@@ -208,7 +201,7 @@ func (a RetainedSizeCalculator) calcObjectArraySize(hprof *HProf, dump *hprofdat
 	for _, objectId := range objectIds {
 		if objectId != 0 {
 			if rootScanner.IsRetained(dump.ArrayObjectId, objectId) {
-				s := a.retainedSizeInstance(hprof, objectId, seen, rootScanner)
+				s, _ := a.retainedSizeInstance(hprof, objectId, seen, rootScanner)
 				if a.logger.IsDebugEnabled() {
 					sizeResult = append(sizeResult, s)
 				}
@@ -246,7 +239,7 @@ func (a RetainedSizeCalculator) calcClassSize(hprof *HProf, dump *hprofdata.HPro
 			totalSize += 8
 			if childObjectId != 0 {
 				if rootScanner.IsRetained(dump.ClassObjectId, childObjectId) {
-					size := a.retainedSizeInstance(hprof, childObjectId, seen, rootScanner)
+					size, _ := a.retainedSizeInstance(hprof, childObjectId, seen, rootScanner)
 					totalSize += size
 				}
 			}
