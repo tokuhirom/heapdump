@@ -28,7 +28,7 @@ func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) error
 		r.logger.Debug("rootObjectId=%v", rootObjectId)
 		err := r.scan(rootObjectId, a, seen)
 		if err != nil {
-			return err
+			return fmt.Errorf("ScanRoot: %v", err)
 		}
 	}
 	r.logger.Debug("--- /ScanRoot ---")
@@ -50,12 +50,18 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) erro
 
 	instanceDump := a.hprof.objectId2instanceDump[objectId]
 	if instanceDump != nil {
-		r.logger.Debug("instance dump = %v", objectId)
-
 		classDump, err := a.hprof.GetClassObjectByClassObjectId(instanceDump.ClassObjectId)
 		if err != nil {
 			return fmt.Errorf("cannot get class object from instance: %v", err)
 		}
+		if r.logger.IsDebugEnabled() {
+			name, err := a.hprof.GetClassNameByClassObjectId(classDump.ClassObjectId)
+			if err != nil {
+				return fmt.Errorf("err: %v", err)
+			}
+			r.logger.Debug("instance dump = %v(%v)", objectId, name)
+		}
+
 		values := instanceDump.GetValues()
 		idx := 0
 
@@ -69,7 +75,8 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) erro
 					r.RegisterParent(objectId, childObjectId)
 					err := r.scan(childObjectId, a, seen)
 					if err != nil {
-						return fmt.Errorf("scan failed: %v", err)
+						return fmt.Errorf("scan failed(%v): %v",
+							instanceDump.ObjectId, err)
 					}
 					idx += 8
 				} else {
@@ -103,7 +110,10 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) erro
 			if field.Type == hprofdata.HProfValueType_OBJECT {
 				childObjectId := field.GetValue()
 				r.RegisterParent(objectId, childObjectId)
-				r.scan(childObjectId, a, seen)
+				err := r.scan(childObjectId, a, seen)
+				if err != nil {
+					return err
+				}
 				idx += 8
 			} else {
 				idx += parser.ValueSize[field.Type]
@@ -131,7 +141,10 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) erro
 		r.logger.Debug("object array = %v", objectId)
 		for _, childObjectId := range objectArrayDump.ElementObjectIds {
 			r.RegisterParent(objectId, childObjectId)
-			r.scan(childObjectId, a, seen)
+			err := r.scan(childObjectId, a, seen)
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	}

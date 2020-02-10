@@ -7,6 +7,7 @@ import (
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/errors"
 	"io"
 	"os"
 	"strconv"
@@ -231,6 +232,9 @@ func (h HProf) GetClassNameByClassObjectId(classObjectId uint64) (string, error)
 
 func (h HProf) loadProto(prefix string, id uint64, m proto.Message) error {
 	bs, err := h.db.Get(createKey(prefix, id), nil)
+	if err == errors.ErrNotFound {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("cannot load proto: %v%v: %v", prefix, id, err)
 	}
