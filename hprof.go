@@ -32,7 +32,6 @@ type HProf struct {
 	logger *Logger
 
 	classObjectId2objectIds          map[uint64][]uint64
-	classObjectId2classDump          map[uint64]*hprofdata.HProfClassDump
 	arrayObjectId2primitiveArrayDump map[uint64]*hprofdata.HProfPrimitiveArrayDump
 	arrayObjectId2objectArrayDump    map[uint64]*hprofdata.HProfObjectArrayDump
 	objectId2instanceDump            map[uint64]*hprofdata.HProfInstanceDump
@@ -52,7 +51,6 @@ func NewHProf(logger *Logger, indexFilePath string) (*HProf, error) {
 	m.logger = logger
 
 	m.classObjectId2objectIds = make(map[uint64][]uint64)
-	m.classObjectId2classDump = make(map[uint64]*hprofdata.HProfClassDump)
 	m.arrayObjectId2primitiveArrayDump = make(map[uint64]*hprofdata.HProfPrimitiveArrayDump)
 	m.arrayObjectId2objectArrayDump = make(map[uint64]*hprofdata.HProfObjectArrayDump)
 	m.objectId2instanceDump = make(map[uint64]*hprofdata.HProfInstanceDump)
@@ -173,7 +171,7 @@ func (h HProf) addRecord(record interface{}, batch *leveldb.Batch) error {
 	case *hprofdata.HProfRecordHeapDumpBoundary:
 		break
 	case *hprofdata.HProfClassDump:
-		h.classObjectId2classDump[o.ClassObjectId] = o
+		return writeRecord(batch, keyPrefixClass, o.ClassObjectId, o)
 	case *hprofdata.HProfInstanceDump: // HPROF_GC_INSTANCE_DUMP
 		h.classObjectId2objectIds[o.ClassObjectId] = append(h.classObjectId2objectIds[o.ClassObjectId], o.ObjectId)
 		h.objectId2instanceDump[o.ObjectId] = o
@@ -229,4 +227,18 @@ func (h HProf) GetClassNameByClassObjectId(classObjectId uint64) (string, error)
 		return "", err
 	}
 	return h.GetStringByNameId(classNameId)
+}
+
+func (h HProf) loadProto(prefix string, id uint64, m proto.Message) error {
+	bs, err := h.db.Get(createKey(prefix, id), nil)
+	if err != nil {
+		return fmt.Errorf("cannot load proto: %v%v: %v", prefix, id, err)
+	}
+	return proto.Unmarshal(bs, m)
+}
+
+func (h HProf) GetClassObjectByClassObjectId(classObjectId uint64) (*hprofdata.HProfClassDump, error) {
+	var d hprofdata.HProfClassDump
+	err := h.loadProto(keyPrefixClass, classObjectId, &d)
+	return &d, err
 }

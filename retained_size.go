@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/google/hprof-parser/hprofdata"
 	"github.com/google/hprof-parser/parser"
+	"github.com/syndtr/goleveldb/leveldb/errors"
 	"log"
 )
 
@@ -73,9 +75,13 @@ func (a RetainedSizeCalculator) retainedSizeInstance(hprof *HProf, objectId uint
 		return a.calcPrimitiveArraySize(primitiveArrayDump), nil
 	}
 
-	classDump := hprof.classObjectId2classDump[objectId]
-	if classDump != nil {
-		return a.calcClassSize(hprof, classDump, seen, rootScanner), nil
+	classDump, err := hprof.GetClassObjectByClassObjectId(objectId)
+	if err != nil || err == errors.ErrNotFound {
+		a.logger.Info("Cannot get class: %v", err)
+	} else {
+		if classDump != nil {
+			return a.calcClassSize(hprof, classDump, seen, rootScanner), nil
+		}
 	}
 
 	log.Fatalf(
@@ -102,7 +108,10 @@ func (a RetainedSizeCalculator) calcObjectSize(
 	objectId uint64,
 	seen *Seen,
 	rootScanner *RootScanner) (uint64, error) {
-	classDump := hprof.classObjectId2classDump[instanceDump.ClassObjectId]
+	classDump, err := hprof.GetClassObjectByClassObjectId(instanceDump.ClassObjectId)
+	if err != nil && err != errors.ErrNotFound {
+		return 0, fmt.Errorf("cannot get class object in calcObjectSize: %v", err)
+	}
 	a.logger.Debug("calcObjectSize oid=%d",
 		objectId)
 
@@ -133,7 +142,10 @@ func (a RetainedSizeCalculator) calcObjectSize(
 		if classDump.SuperClassObjectId == 0 {
 			break
 		} else {
-			classDump = hprof.classObjectId2classDump[classDump.SuperClassObjectId]
+			classDump, err = hprof.GetClassObjectByClassObjectId(classDump.SuperClassObjectId)
+			if err != nil {
+				return 0, fmt.Errorf("cannot get class object: %v", err)
+			}
 		}
 	}
 

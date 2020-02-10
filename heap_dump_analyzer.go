@@ -84,8 +84,12 @@ func (a HeapDumpAnalyzer) DumpInclusiveRanking(rootScanner *RootScanner) error {
 		if err != nil {
 			return err
 		}
+		n, err := a.softSizeCalculator.CalcSoftSizeByClassObjectId(a.hprof, classObjectId)
+		if err != nil {
+			return err
+		}
 		a.logger.Info(p.Sprintf("shallowSize=%11d retainedSize=%11d(count=%11d)= %s",
-			a.softSizeCalculator.CalcSoftSizeByClassObjectId(a.hprof, classObjectId),
+			n,
 			classObjectId2objectSize[classObjectId],
 			classObjectId2objectCount[classObjectId],
 			name))
