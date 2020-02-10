@@ -61,7 +61,10 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) erro
 					objectIdBytes := values[idx : idx+8]
 					childObjectId := binary.BigEndian.Uint64(objectIdBytes)
 					r.RegisterParent(objectId, childObjectId)
-					r.scan(childObjectId, a, seen)
+					err := r.scan(childObjectId, a, seen)
+					if err != nil {
+						return err
+					}
 					idx += 8
 				} else {
 					idx += parser.ValueSize[instanceField.Type]
