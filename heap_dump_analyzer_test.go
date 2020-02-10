@@ -23,7 +23,10 @@ func NewTester(path string, t *testing.T) *Tester {
 
 func (a *Tester) AssertSize(targetClass string, expectedRetainedSize uint64) {
 	rootScanner := NewRootScanner(a.analyzer.logger)
-	rootScanner.ScanAll(a.analyzer)
+	err := rootScanner.ScanAll(a.analyzer)
+	if err != nil {
+		a.t.Fatal(err)
+	}
 	sizeMap, err := a.analyzer.CalculateRetainedSizeOfInstancesByName(targetClass, rootScanner)
 	if err != nil {
 		a.t.Fatal(err)
@@ -49,7 +52,10 @@ func (a *Tester) AssertSize(targetClass string, expectedRetainedSize uint64) {
 
 func (a *Tester) GetTotalSize(targetClass string) (uint64, error) {
 	rootScanner := NewRootScanner(a.analyzer.logger)
-	rootScanner.ScanAll(a.analyzer)
+	err := rootScanner.ScanAll(a.analyzer)
+	if err != nil {
+		return 0, err
+	}
 	sizeMap, err := a.analyzer.CalculateRetainedSizeOfInstancesByName(targetClass, rootScanner)
 	if err != nil {
 		return 0, err

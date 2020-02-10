@@ -19,14 +19,18 @@ func NewRootScanner(logger *Logger) *RootScanner {
 	return m
 }
 
-func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) {
+func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) error {
 	r.logger.Debug("--- ScanRoot ---: %v", len(rootObjectIds))
 	seen := NewSeen()
 	for _, rootObjectId := range rootObjectIds {
 		r.logger.Debug("rootObjectId=%v", rootObjectId)
-		r.scan(rootObjectId, a, seen)
+		err := r.scan(rootObjectId, a, seen)
+		if err != nil {
+			return err
+		}
 	}
 	r.logger.Debug("--- /ScanRoot ---")
+	return nil
 }
 
 func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) error {
@@ -174,12 +178,20 @@ func (r RootScanner) IsRetained(parentObjectId uint64, childObjectId uint64) boo
 	return theParentObjectId == parentObjectId
 }
 
-func (r RootScanner) ScanAll(analyzer *HeapDumpAnalyzer) {
+func (r RootScanner) ScanAll(analyzer *HeapDumpAnalyzer) error {
 	r.logger.Info("Scanning retained root")
-	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJniGlobals))
-	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJniLocal))
-	r.ScanRoot(analyzer, keys(analyzer.hprof.rootJavaFrame))
-	r.ScanRoot(analyzer, keys(analyzer.hprof.rootStickyClass))
-	r.ScanRoot(analyzer, keys(analyzer.hprof.rootThreadObj))
-	r.ScanRoot(analyzer, keys(analyzer.hprof.rootMonitorUsed))
+	for _, f := range [][]uint64{
+		keys(analyzer.hprof.rootJniGlobals),
+		keys(analyzer.hprof.rootJniLocal),
+		keys(analyzer.hprof.rootJavaFrame),
+		keys(analyzer.hprof.rootStickyClass),
+		keys(analyzer.hprof.rootThreadObj),
+		keys(analyzer.hprof.rootMonitorUsed),
+	} {
+		err := r.ScanRoot(analyzer, f)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

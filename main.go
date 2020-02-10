@@ -82,7 +82,10 @@ func main() {
 	rootScanner := NewRootScanner(logger)
 	{
 		start := time.Now()
-		rootScanner.ScanAll(analyzer)
+		err := rootScanner.ScanAll(analyzer)
+		if err != nil {
+			logger.Fatalf("Error in scanning root: %v", err)
+		}
 		elapsed := time.Since(start)
 		logger.Info("Scanned retained root in %s.", elapsed)
 	}
