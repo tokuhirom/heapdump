@@ -29,12 +29,12 @@ func (r RootScanner) ScanRoot(a *HeapDumpAnalyzer, rootObjectIds []uint64) {
 	r.logger.Debug("--- /ScanRoot ---")
 }
 
-func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
+func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) error {
 	if objectId == 0 {
-		return // NULL
+		return nil // NULL
 	}
 	if seen.HasKey(objectId) {
-		return
+		return nil
 	}
 
 	a.logger.Indent()
@@ -46,7 +46,10 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 	if instanceDump != nil {
 		r.logger.Debug("instance dump = %v", objectId)
 
-		classDump := a.hprof.classObjectId2classDump[instanceDump.ClassObjectId]
+		classDump, err := a.hprof.GetClassDumpByClassObjectId(instanceDump.ClassObjectId)
+		if err != nil {
+			return err
+		}
 		values := instanceDump.GetValues()
 		idx := 0
 
@@ -64,15 +67,21 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 					idx += parser.ValueSize[instanceField.Type]
 				}
 			}
-			classDump = a.hprof.classObjectId2classDump[classDump.SuperClassObjectId]
+			classDump, err = a.hprof.GetClassDumpByClassObjectId(classDump.SuperClassObjectId)
+			if err != nil {
+				return err
+			}
 			if classDump == nil {
 				break
 			}
 		}
-		return
+		return nil
 	}
 
-	classDump := a.hprof.classObjectId2classDump[objectId]
+	classDump, err := a.hprof.GetClassDumpByClassObjectId(objectId)
+	if err != nil {
+		return err
+	}
 	if classDump != nil {
 		// scan super
 		r.logger.Debug("class dump = %v", objectId)
@@ -90,12 +99,18 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 		}
 
 		// scan super class
-		super := a.hprof.classObjectId2classDump[classDump.SuperClassObjectId]
+		super, err := a.hprof.GetClassDumpByClassObjectId(classDump.SuperClassObjectId)
+		if err != nil {
+			return err
+		}
 		if super != nil {
 			r.RegisterParent(objectId, super.ClassObjectId)
-			r.scan(super.ClassObjectId, a, seen)
+			err := r.scan(super.ClassObjectId, a, seen)
+			if err != nil {
+				return err
+			}
 		}
-		return
+		return nil
 	}
 
 	// object array
@@ -104,24 +119,27 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) {
 		r.logger.Debug("object array = %v", objectId)
 		for _, childObjectId := range objectArrayDump.ElementObjectIds {
 			r.RegisterParent(objectId, childObjectId)
-			r.scan(childObjectId, a, seen)
+			err := r.scan(childObjectId, a, seen)
+			if err != nil {
+				return err
+			}
 		}
-		return
+		return nil
 	}
 
 	// primitive array
 	primitiveArrayDump := a.hprof.arrayObjectId2primitiveArrayDump[objectId]
 	if primitiveArrayDump != nil {
 		r.logger.Debug("primitive array = %v", objectId)
-		return
+		return nil
 	}
 
-	log.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v cd=%v",
+	log.Fatalf("SHOULD NOT REACH HERE: %v pa=%v oa=%v id=%v",
 		objectId,
 		a.hprof.arrayObjectId2primitiveArrayDump[objectId],
 		a.hprof.arrayObjectId2objectArrayDump[objectId],
-		a.hprof.objectId2instanceDump[objectId],
-		a.hprof.classObjectId2classDump[objectId])
+		a.hprof.objectId2instanceDump[objectId])
+	return nil
 }
 
 func (r RootScanner) RegisterParent(parentObjectId uint64, childObjectId uint64) {

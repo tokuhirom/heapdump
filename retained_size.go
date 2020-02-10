@@ -73,7 +73,10 @@ func (a RetainedSizeCalculator) retainedSizeInstance(hprof *HProf, objectId uint
 		return a.calcPrimitiveArraySize(primitiveArrayDump), nil
 	}
 
-	classDump := hprof.classObjectId2classDump[objectId]
+	classDump, err := hprof.GetClassDumpByClassObjectId(objectId)
+	if err != nil {
+		return 0, err
+	}
 	if classDump != nil {
 		return a.calcClassSize(hprof, classDump, seen, rootScanner), nil
 	}
@@ -102,7 +105,10 @@ func (a RetainedSizeCalculator) calcObjectSize(
 	objectId uint64,
 	seen *Seen,
 	rootScanner *RootScanner) (uint64, error) {
-	classDump := hprof.classObjectId2classDump[instanceDump.ClassObjectId]
+	classDump, err := hprof.GetClassDumpByClassObjectId(instanceDump.ClassObjectId)
+	if err != nil {
+		return 0, err
+	}
 	a.logger.Debug("calcObjectSize oid=%d",
 		objectId)
 
@@ -133,7 +139,10 @@ func (a RetainedSizeCalculator) calcObjectSize(
 		if classDump.SuperClassObjectId == 0 {
 			break
 		} else {
-			classDump = hprof.classObjectId2classDump[classDump.SuperClassObjectId]
+			classDump, err = hprof.GetClassDumpByClassObjectId(classDump.SuperClassObjectId)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 
