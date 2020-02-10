@@ -98,7 +98,10 @@ func (r RootScanner) scan(objectId uint64, a *HeapDumpAnalyzer, seen *Seen) erro
 			if field.Type == hprofdata.HProfValueType_OBJECT {
 				childObjectId := field.GetValue()
 				r.RegisterParent(objectId, childObjectId)
-				r.scan(childObjectId, a, seen)
+				err := r.scan(childObjectId, a, seen)
+				if err != nil {
+					return err
+				}
 				idx += 8
 			} else {
 				idx += parser.ValueSize[field.Type]
