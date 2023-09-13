@@ -1,5 +1,7 @@
 # heapdump
 
+**[Heapdive](https://github.com/heapdive/heapdive)** is successor of this command.
+
 Heapdump analyzer based on [google/hprof-parser](https://github.com/google/hprof-parser).
 
 ## Goal
